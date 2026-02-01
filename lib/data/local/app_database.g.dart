@@ -1344,21 +1344,51 @@ class $WeatherDataTable extends WeatherData
       requiredDuringInsert: true,
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('REFERENCES mood_entries (id)'));
-  static const VerificationMeta _temperatureMeta =
-      const VerificationMeta('temperature');
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
   @override
-  late final GeneratedColumn<double> temperature = GeneratedColumn<double>(
-      'temperature', aliasedName, true,
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+      'source', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _temperatureCategoryMeta =
+      const VerificationMeta('temperatureCategory');
+  @override
+  late final GeneratedColumnWithTypeConverter<TemperatureCategory, int>
+      temperatureCategory = GeneratedColumn<int>(
+              'temperature_category', aliasedName, false,
+              type: DriftSqlType.int, requiredDuringInsert: true)
+          .withConverter<TemperatureCategory>(
+              $WeatherDataTable.$convertertemperatureCategory);
+  static const VerificationMeta _rawTemperatureMeta =
+      const VerificationMeta('rawTemperature');
+  @override
+  late final GeneratedColumn<double> rawTemperature = GeneratedColumn<double>(
+      'raw_temperature', aliasedName, true,
       type: DriftSqlType.double, requiredDuringInsert: false);
-  static const VerificationMeta _conditionMeta =
-      const VerificationMeta('condition');
+  static const VerificationMeta _precipitationMeta =
+      const VerificationMeta('precipitation');
   @override
-  late final GeneratedColumn<String> condition = GeneratedColumn<String>(
-      'condition', aliasedName, true,
-      type: DriftSqlType.string, requiredDuringInsert: false);
+  late final GeneratedColumnWithTypeConverter<PrecipitationType?, int>
+      precipitation = GeneratedColumn<int>('precipitation', aliasedName, true,
+              type: DriftSqlType.int, requiredDuringInsert: false)
+          .withConverter<PrecipitationType?>(
+              $WeatherDataTable.$converterprecipitationn);
+  static const VerificationMeta _cloudinessMeta =
+      const VerificationMeta('cloudiness');
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, moodEntryId, temperature, condition];
+  late final GeneratedColumnWithTypeConverter<Cloudiness?, int> cloudiness =
+      GeneratedColumn<int>('cloudiness', aliasedName, true,
+              type: DriftSqlType.int, requiredDuringInsert: false)
+          .withConverter<Cloudiness?>($WeatherDataTable.$convertercloudinessn);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        moodEntryId,
+        source,
+        temperatureCategory,
+        rawTemperature,
+        precipitation,
+        cloudiness
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1380,16 +1410,22 @@ class $WeatherDataTable extends WeatherData
     } else if (isInserting) {
       context.missing(_moodEntryIdMeta);
     }
-    if (data.containsKey('temperature')) {
+    if (data.containsKey('source')) {
+      context.handle(_sourceMeta,
+          source.isAcceptableOrUnknown(data['source']!, _sourceMeta));
+    } else if (isInserting) {
+      context.missing(_sourceMeta);
+    }
+    context.handle(
+        _temperatureCategoryMeta, const VerificationResult.success());
+    if (data.containsKey('raw_temperature')) {
       context.handle(
-          _temperatureMeta,
-          temperature.isAcceptableOrUnknown(
-              data['temperature']!, _temperatureMeta));
+          _rawTemperatureMeta,
+          rawTemperature.isAcceptableOrUnknown(
+              data['raw_temperature']!, _rawTemperatureMeta));
     }
-    if (data.containsKey('condition')) {
-      context.handle(_conditionMeta,
-          condition.isAcceptableOrUnknown(data['condition']!, _conditionMeta));
-    }
+    context.handle(_precipitationMeta, const VerificationResult.success());
+    context.handle(_cloudinessMeta, const VerificationResult.success());
     return context;
   }
 
@@ -1403,10 +1439,19 @@ class $WeatherDataTable extends WeatherData
           .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
       moodEntryId: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}mood_entry_id'])!,
-      temperature: attachedDatabase.typeMapping
-          .read(DriftSqlType.double, data['${effectivePrefix}temperature']),
-      condition: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}condition']),
+      source: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}source'])!,
+      temperatureCategory: $WeatherDataTable.$convertertemperatureCategory
+          .fromSql(attachedDatabase.typeMapping.read(DriftSqlType.int,
+              data['${effectivePrefix}temperature_category'])!),
+      rawTemperature: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}raw_temperature']),
+      precipitation: $WeatherDataTable.$converterprecipitationn.fromSql(
+          attachedDatabase.typeMapping
+              .read(DriftSqlType.int, data['${effectivePrefix}precipitation'])),
+      cloudiness: $WeatherDataTable.$convertercloudinessn.fromSql(
+          attachedDatabase.typeMapping
+              .read(DriftSqlType.int, data['${effectivePrefix}cloudiness'])),
     );
   }
 
@@ -1414,28 +1459,63 @@ class $WeatherDataTable extends WeatherData
   $WeatherDataTable createAlias(String alias) {
     return $WeatherDataTable(attachedDatabase, alias);
   }
+
+  static JsonTypeConverter2<TemperatureCategory, int, int>
+      $convertertemperatureCategory =
+      const EnumIndexConverter<TemperatureCategory>(TemperatureCategory.values);
+  static JsonTypeConverter2<PrecipitationType, int, int>
+      $converterprecipitation =
+      const EnumIndexConverter<PrecipitationType>(PrecipitationType.values);
+  static JsonTypeConverter2<PrecipitationType?, int?, int?>
+      $converterprecipitationn =
+      JsonTypeConverter2.asNullable($converterprecipitation);
+  static JsonTypeConverter2<Cloudiness, int, int> $convertercloudiness =
+      const EnumIndexConverter<Cloudiness>(Cloudiness.values);
+  static JsonTypeConverter2<Cloudiness?, int?, int?> $convertercloudinessn =
+      JsonTypeConverter2.asNullable($convertercloudiness);
 }
 
 class WeatherDataData extends DataClass implements Insertable<WeatherDataData> {
   final int id;
   final int moodEntryId;
-  final double? temperature;
-  final String? condition;
+
+  /// auto | manual
+  final String source;
+  final TemperatureCategory temperatureCategory;
+
+  /// числовая температура если api
+  final double? rawTemperature;
+  final PrecipitationType? precipitation;
+  final Cloudiness? cloudiness;
   const WeatherDataData(
       {required this.id,
       required this.moodEntryId,
-      this.temperature,
-      this.condition});
+      required this.source,
+      required this.temperatureCategory,
+      this.rawTemperature,
+      this.precipitation,
+      this.cloudiness});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['mood_entry_id'] = Variable<int>(moodEntryId);
-    if (!nullToAbsent || temperature != null) {
-      map['temperature'] = Variable<double>(temperature);
+    map['source'] = Variable<String>(source);
+    {
+      map['temperature_category'] = Variable<int>($WeatherDataTable
+          .$convertertemperatureCategory
+          .toSql(temperatureCategory));
     }
-    if (!nullToAbsent || condition != null) {
-      map['condition'] = Variable<String>(condition);
+    if (!nullToAbsent || rawTemperature != null) {
+      map['raw_temperature'] = Variable<double>(rawTemperature);
+    }
+    if (!nullToAbsent || precipitation != null) {
+      map['precipitation'] = Variable<int>(
+          $WeatherDataTable.$converterprecipitationn.toSql(precipitation));
+    }
+    if (!nullToAbsent || cloudiness != null) {
+      map['cloudiness'] = Variable<int>(
+          $WeatherDataTable.$convertercloudinessn.toSql(cloudiness));
     }
     return map;
   }
@@ -1444,12 +1524,17 @@ class WeatherDataData extends DataClass implements Insertable<WeatherDataData> {
     return WeatherDataCompanion(
       id: Value(id),
       moodEntryId: Value(moodEntryId),
-      temperature: temperature == null && nullToAbsent
+      source: Value(source),
+      temperatureCategory: Value(temperatureCategory),
+      rawTemperature: rawTemperature == null && nullToAbsent
           ? const Value.absent()
-          : Value(temperature),
-      condition: condition == null && nullToAbsent
+          : Value(rawTemperature),
+      precipitation: precipitation == null && nullToAbsent
           ? const Value.absent()
-          : Value(condition),
+          : Value(precipitation),
+      cloudiness: cloudiness == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cloudiness),
     );
   }
 
@@ -1459,8 +1544,14 @@ class WeatherDataData extends DataClass implements Insertable<WeatherDataData> {
     return WeatherDataData(
       id: serializer.fromJson<int>(json['id']),
       moodEntryId: serializer.fromJson<int>(json['moodEntryId']),
-      temperature: serializer.fromJson<double?>(json['temperature']),
-      condition: serializer.fromJson<String?>(json['condition']),
+      source: serializer.fromJson<String>(json['source']),
+      temperatureCategory: $WeatherDataTable.$convertertemperatureCategory
+          .fromJson(serializer.fromJson<int>(json['temperatureCategory'])),
+      rawTemperature: serializer.fromJson<double?>(json['rawTemperature']),
+      precipitation: $WeatherDataTable.$converterprecipitationn
+          .fromJson(serializer.fromJson<int?>(json['precipitation'])),
+      cloudiness: $WeatherDataTable.$convertercloudinessn
+          .fromJson(serializer.fromJson<int?>(json['cloudiness'])),
     );
   }
   @override
@@ -1469,86 +1560,132 @@ class WeatherDataData extends DataClass implements Insertable<WeatherDataData> {
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'moodEntryId': serializer.toJson<int>(moodEntryId),
-      'temperature': serializer.toJson<double?>(temperature),
-      'condition': serializer.toJson<String?>(condition),
+      'source': serializer.toJson<String>(source),
+      'temperatureCategory': serializer.toJson<int>($WeatherDataTable
+          .$convertertemperatureCategory
+          .toJson(temperatureCategory)),
+      'rawTemperature': serializer.toJson<double?>(rawTemperature),
+      'precipitation': serializer.toJson<int?>(
+          $WeatherDataTable.$converterprecipitationn.toJson(precipitation)),
+      'cloudiness': serializer.toJson<int?>(
+          $WeatherDataTable.$convertercloudinessn.toJson(cloudiness)),
     };
   }
 
   WeatherDataData copyWith(
           {int? id,
           int? moodEntryId,
-          Value<double?> temperature = const Value.absent(),
-          Value<String?> condition = const Value.absent()}) =>
+          String? source,
+          TemperatureCategory? temperatureCategory,
+          Value<double?> rawTemperature = const Value.absent(),
+          Value<PrecipitationType?> precipitation = const Value.absent(),
+          Value<Cloudiness?> cloudiness = const Value.absent()}) =>
       WeatherDataData(
         id: id ?? this.id,
         moodEntryId: moodEntryId ?? this.moodEntryId,
-        temperature: temperature.present ? temperature.value : this.temperature,
-        condition: condition.present ? condition.value : this.condition,
+        source: source ?? this.source,
+        temperatureCategory: temperatureCategory ?? this.temperatureCategory,
+        rawTemperature:
+            rawTemperature.present ? rawTemperature.value : this.rawTemperature,
+        precipitation:
+            precipitation.present ? precipitation.value : this.precipitation,
+        cloudiness: cloudiness.present ? cloudiness.value : this.cloudiness,
       );
   @override
   String toString() {
     return (StringBuffer('WeatherDataData(')
           ..write('id: $id, ')
           ..write('moodEntryId: $moodEntryId, ')
-          ..write('temperature: $temperature, ')
-          ..write('condition: $condition')
+          ..write('source: $source, ')
+          ..write('temperatureCategory: $temperatureCategory, ')
+          ..write('rawTemperature: $rawTemperature, ')
+          ..write('precipitation: $precipitation, ')
+          ..write('cloudiness: $cloudiness')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, moodEntryId, temperature, condition);
+  int get hashCode => Object.hash(id, moodEntryId, source, temperatureCategory,
+      rawTemperature, precipitation, cloudiness);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is WeatherDataData &&
           other.id == this.id &&
           other.moodEntryId == this.moodEntryId &&
-          other.temperature == this.temperature &&
-          other.condition == this.condition);
+          other.source == this.source &&
+          other.temperatureCategory == this.temperatureCategory &&
+          other.rawTemperature == this.rawTemperature &&
+          other.precipitation == this.precipitation &&
+          other.cloudiness == this.cloudiness);
 }
 
 class WeatherDataCompanion extends UpdateCompanion<WeatherDataData> {
   final Value<int> id;
   final Value<int> moodEntryId;
-  final Value<double?> temperature;
-  final Value<String?> condition;
+  final Value<String> source;
+  final Value<TemperatureCategory> temperatureCategory;
+  final Value<double?> rawTemperature;
+  final Value<PrecipitationType?> precipitation;
+  final Value<Cloudiness?> cloudiness;
   const WeatherDataCompanion({
     this.id = const Value.absent(),
     this.moodEntryId = const Value.absent(),
-    this.temperature = const Value.absent(),
-    this.condition = const Value.absent(),
+    this.source = const Value.absent(),
+    this.temperatureCategory = const Value.absent(),
+    this.rawTemperature = const Value.absent(),
+    this.precipitation = const Value.absent(),
+    this.cloudiness = const Value.absent(),
   });
   WeatherDataCompanion.insert({
     this.id = const Value.absent(),
     required int moodEntryId,
-    this.temperature = const Value.absent(),
-    this.condition = const Value.absent(),
-  }) : moodEntryId = Value(moodEntryId);
+    required String source,
+    required TemperatureCategory temperatureCategory,
+    this.rawTemperature = const Value.absent(),
+    this.precipitation = const Value.absent(),
+    this.cloudiness = const Value.absent(),
+  })  : moodEntryId = Value(moodEntryId),
+        source = Value(source),
+        temperatureCategory = Value(temperatureCategory);
   static Insertable<WeatherDataData> custom({
     Expression<int>? id,
     Expression<int>? moodEntryId,
-    Expression<double>? temperature,
-    Expression<String>? condition,
+    Expression<String>? source,
+    Expression<int>? temperatureCategory,
+    Expression<double>? rawTemperature,
+    Expression<int>? precipitation,
+    Expression<int>? cloudiness,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (moodEntryId != null) 'mood_entry_id': moodEntryId,
-      if (temperature != null) 'temperature': temperature,
-      if (condition != null) 'condition': condition,
+      if (source != null) 'source': source,
+      if (temperatureCategory != null)
+        'temperature_category': temperatureCategory,
+      if (rawTemperature != null) 'raw_temperature': rawTemperature,
+      if (precipitation != null) 'precipitation': precipitation,
+      if (cloudiness != null) 'cloudiness': cloudiness,
     });
   }
 
   WeatherDataCompanion copyWith(
       {Value<int>? id,
       Value<int>? moodEntryId,
-      Value<double?>? temperature,
-      Value<String?>? condition}) {
+      Value<String>? source,
+      Value<TemperatureCategory>? temperatureCategory,
+      Value<double?>? rawTemperature,
+      Value<PrecipitationType?>? precipitation,
+      Value<Cloudiness?>? cloudiness}) {
     return WeatherDataCompanion(
       id: id ?? this.id,
       moodEntryId: moodEntryId ?? this.moodEntryId,
-      temperature: temperature ?? this.temperature,
-      condition: condition ?? this.condition,
+      source: source ?? this.source,
+      temperatureCategory: temperatureCategory ?? this.temperatureCategory,
+      rawTemperature: rawTemperature ?? this.rawTemperature,
+      precipitation: precipitation ?? this.precipitation,
+      cloudiness: cloudiness ?? this.cloudiness,
     );
   }
 
@@ -1561,11 +1698,25 @@ class WeatherDataCompanion extends UpdateCompanion<WeatherDataData> {
     if (moodEntryId.present) {
       map['mood_entry_id'] = Variable<int>(moodEntryId.value);
     }
-    if (temperature.present) {
-      map['temperature'] = Variable<double>(temperature.value);
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
     }
-    if (condition.present) {
-      map['condition'] = Variable<String>(condition.value);
+    if (temperatureCategory.present) {
+      map['temperature_category'] = Variable<int>($WeatherDataTable
+          .$convertertemperatureCategory
+          .toSql(temperatureCategory.value));
+    }
+    if (rawTemperature.present) {
+      map['raw_temperature'] = Variable<double>(rawTemperature.value);
+    }
+    if (precipitation.present) {
+      map['precipitation'] = Variable<int>($WeatherDataTable
+          .$converterprecipitationn
+          .toSql(precipitation.value));
+    }
+    if (cloudiness.present) {
+      map['cloudiness'] = Variable<int>(
+          $WeatherDataTable.$convertercloudinessn.toSql(cloudiness.value));
     }
     return map;
   }
@@ -1575,8 +1726,11 @@ class WeatherDataCompanion extends UpdateCompanion<WeatherDataData> {
     return (StringBuffer('WeatherDataCompanion(')
           ..write('id: $id, ')
           ..write('moodEntryId: $moodEntryId, ')
-          ..write('temperature: $temperature, ')
-          ..write('condition: $condition')
+          ..write('source: $source, ')
+          ..write('temperatureCategory: $temperatureCategory, ')
+          ..write('rawTemperature: $rawTemperature, ')
+          ..write('precipitation: $precipitation, ')
+          ..write('cloudiness: $cloudiness')
           ..write(')'))
         .toString();
   }
