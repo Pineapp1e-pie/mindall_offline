@@ -50,13 +50,12 @@ import '../../data/local/app_database.dart';
 
 
 import 'dart:ui';
-
 class TagSection extends StatelessWidget {
   final String title;
   final List<ContextTag> tags;
   final List<int> selectedIds;
   final void Function(int tagId) onToggle;
-  final VoidCallback onAdd;
+  final VoidCallback? onAdd;  // ← теперь опциональный
 
   const TagSection({
     super.key,
@@ -64,7 +63,7 @@ class TagSection extends StatelessWidget {
     required this.tags,
     required this.selectedIds,
     required this.onToggle,
-    required this.onAdd,
+    this.onAdd,  // ← может быть null
   });
 
   @override
@@ -93,11 +92,13 @@ class TagSection extends StatelessWidget {
                 onTap: () => onToggle(tag.id),
               );
             }),
-            _PixelTag(
-              text: '+',
-              selected: false,
-              onTap: onAdd,
-            ),
+            // ← показываем кнопку только если передан onAdd
+            if (onAdd != null)
+              _PixelTag(
+                text: '+',
+                selected: false,
+                onTap: onAdd!,
+              ),
           ],
         ),
       ],
@@ -120,9 +121,10 @@ class _PixelTag extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        constraints: const BoxConstraints(minWidth: 100), // Минимальная ширина для температур
         padding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 10,
+          horizontal: 12,
+          vertical: 8,
         ),
         decoration: BoxDecoration(
           color: selected
@@ -135,15 +137,52 @@ class _PixelTag extends StatelessWidget {
             width: 2,
           ),
         ),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontFamily: 'DotGothic',
-            fontSize: 16,
-            color: selected ? Colors.black : Colors.white,
-          ),
+        child: Center(
+          child: _buildTextContent(),
         ),
       ),
     );
+  }
+
+  // Разбираем текст на две части, если есть перенос строки
+  Widget _buildTextContent() {
+    if (text.contains('\n')) {
+      final parts = text.split('\n');
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            parts[0], // "Холодно"
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'DotGothic',
+              fontSize: 16,
+              color: selected ? Colors.black : Colors.white,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            parts[1], // "-25°C … -10°C"
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'DotGothic',
+              fontSize: 14,
+              color: selected ? Colors.black54 : Colors.white70,
+            ),
+          ),
+        ],
+      );
+    } else {
+      // Обычный текст без переноса
+      return Text(
+        text,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontFamily: 'DotGothic',
+          fontSize: 16,
+          color: selected ? Colors.black : Colors.white,
+        ),
+      );
+    }
   }
 }

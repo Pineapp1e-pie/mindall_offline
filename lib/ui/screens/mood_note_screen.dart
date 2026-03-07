@@ -6,7 +6,7 @@ import 'package:flutter_sound/public/flutter_sound_player.dart';
 import 'package:flutter_sound/public/flutter_sound_recorder.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:mindall/ui/screens/weather_screen.dart';
+import 'package:mindall/ui/screens/weather_step.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../domain/models/mood_entry_draft.dart';
 import '../widgets/step_indicator.dart';
@@ -243,7 +243,7 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => WeatherStepScreen(
-          draft: _draft,
+          draft: _draft, moodColor: widget.moodColor,
         ),
       ),
     );

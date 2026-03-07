@@ -4,6 +4,10 @@ enum ContextTagType {
   place,
   activity,
   social,
+  cloudiness,
+  temperature,
+  precipitation,
+
 }
 
 class ContextTags extends Table {

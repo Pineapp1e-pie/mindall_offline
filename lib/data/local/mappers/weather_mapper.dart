@@ -33,4 +33,3 @@ Cloudiness mapCloudiness(int clouds) {
   if (clouds <= 70) return Cloudiness.cloudy;
   return Cloudiness.overcast;
 }
-
