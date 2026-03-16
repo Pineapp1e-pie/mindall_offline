@@ -3,7 +3,10 @@ import 'package:mindall/data/local/tables/health_data.dart';
 
 import '../../../domain/models/mood_entry_with_mood.dart';
 import '../app_database.dart';
+import '../tables/context_details.dart';
+import '../tables/weather_data.dart';
 import 'local_repository.dart';
+import '../../../domain/models/mood_entry_draft.dart';
 
 class LocalRepositoryImpl implements LocalRepository {
   final AppDatabase db;
@@ -121,5 +124,96 @@ class LocalRepositoryImpl implements LocalRepository {
   }
 
 
+  @override
+  Future<void> insertHealthData(HealthDataCompanion data) async {
+    await db.into(db.healthData).insertOnConflictUpdate(data);
+  }
 
+  @override
+  Future<void> insertContextDetails(ContextDetailsCompanion data) {
+    return db.into(db.contextDetails).insert(data);
+  }
+
+  @override
+  Future<void> saveFullEntry(MoodEntryDraft draft) async {
+
+    await db.transaction(() async {
+
+      /// 1. mood
+      final entryId = await db.into(db.moodEntries).insert(
+        MoodEntriesCompanion.insert(
+          userId: "1",
+          moodId: draft.moodId,
+        ),
+      );
+
+      /// 2. context + notes
+      await db.into(db.contextDetails).insert(
+        ContextDetailsCompanion.insert(
+          moodEntryId: entryId,
+          note: Value(draft.note.isEmpty ? null : draft.note),
+          voicePath: Value(draft.recordPath),
+          photoPath: Value(
+            draft.imagePaths.isNotEmpty ? draft.imagePaths.first : null,
+          ),
+        ),
+      );
+
+      /// 3. health
+      if (draft.health != null) {
+        await db.into(db.healthData).insert(
+          HealthDataCompanion.insert(
+            date: draft.health!.date,
+            sleepMinutes: Value(draft.health!.sleepMinutes),
+            stepsAmount: Value(draft.health!.stepsAmount),
+            cyclePhase: Value(draft.health!.cyclePhase),
+            source: Value(draft.health!.source),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+      }
+
+      /// 4. weather
+      if (draft.weather != null) {
+        await db.into(db.weatherData).insert(
+          WeatherDataCompanion.insert(
+            moodEntryId: entryId,
+            source: draft.weather!.source,
+            temperatureCategory: draft.weather!.temperature!,
+            precipitation: Value(draft.weather!.precipitation),
+            cloudiness: Value(draft.weather!.cloudiness),
+          ),
+        );
+      }
+
+    });
+  }
+
+  @override
+  Future<ContextDetail?> getContextDetailsForEntry(int entryId) async {
+    return await (db.select(db.contextDetails)
+      ..where((t) => t.moodEntryId.equals(entryId)))
+        .getSingleOrNull();
+  }
+
+  @override
+  Future<List<ContextTag>> getTagsForEntry(int entryId) async {
+    final query = db.select(db.contextTags).join([
+      innerJoin(
+        db.moodEntryTags,
+        db.moodEntryTags.tagId.equalsExp(db.contextTags.id),
+      ),
+    ])
+      ..where(db.moodEntryTags.moodEntryId.equals(entryId));
+
+    final rows = await query.get();
+    return rows.map((row) => row.readTable(db.contextTags)).toList();
+  }
+
+  @override
+  Future<WeatherDataData?> getWeatherForEntry(int entryId) async {
+    return await (db.select(db.weatherData)
+      ..where((w) => w.moodEntryId.equals(entryId)))
+        .getSingleOrNull();
+  }
 }

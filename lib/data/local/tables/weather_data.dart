@@ -35,6 +35,7 @@ class WeatherData extends Table {
   /// auto | manual
   TextColumn get source => text()();
 
+
   IntColumn get temperatureCategory =>
       intEnum<TemperatureCategory>()();
 

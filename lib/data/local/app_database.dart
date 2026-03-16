@@ -6,6 +6,7 @@ import 'package:mindall/data/local/tables/daily_mood_stats.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
+import '../../domain/models/health_draft.dart';
 import 'tables/mood_entries.dart';
 import 'tables/context_tags.dart';
 import 'tables/mood_entry_tags.dart';

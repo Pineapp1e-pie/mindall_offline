@@ -1,6 +1,9 @@
 import '../../../domain/models/mood_entry_with_mood.dart';
 import '../app_database.dart';
+import '../tables/context_details.dart';
 import '../tables/health_data.dart';
+import '../../../domain/models/mood_entry_draft.dart';
+import '../tables/weather_data.dart';
 
 abstract class LocalRepository {
   /// --- Mood entries ---
@@ -8,6 +11,7 @@ abstract class LocalRepository {
 
   Future<List<MoodEntryWithMood>> getMoodEntriesForDay(DateTime day);
 
+  Future<void> saveFullEntry(MoodEntryDraft draft);
 
   Future<List<MoodEntry>> getMoodEntriesForPeriod(
       DateTime from,
@@ -28,7 +32,20 @@ abstract class LocalRepository {
 
   Future<void> upsertDailyMoodStat(DailyMoodStatsCompanion stat);
 
+
   /// --- Health data ---
+  Future<void> insertHealthData(HealthDataCompanion data); // ← новый метод
   Future<HealthDataData?> getHealthDataForDay(DateTime day);
 
+  Future<void> insertContextDetails(ContextDetailsCompanion data);
+
+
+
+// Замени типы на правильные из Drift
+  Future<ContextDetail?> getContextDetailsForEntry(int entryId);
+  Future<WeatherDataData?> getWeatherForEntry(int entryId);
+  Future<List<ContextTag>> getTagsForEntry(int entryId);
+
 }
+
+

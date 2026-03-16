@@ -1755,31 +1755,36 @@ class $HealthDataTable extends HealthData
   @override
   late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
       'date', aliasedName, false,
-      type: DriftSqlType.dateTime, requiredDuringInsert: true);
-  static const VerificationMeta _sleepHoursMeta =
-      const VerificationMeta('sleepHours');
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: true,
+      defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'));
+  static const VerificationMeta _sleepMinutesMeta =
+      const VerificationMeta('sleepMinutes');
   @override
-  late final GeneratedColumn<double> sleepHours = GeneratedColumn<double>(
-      'sleep_hours', aliasedName, true,
-      type: DriftSqlType.double, requiredDuringInsert: false);
-  static const VerificationMeta _activityLevelMeta =
-      const VerificationMeta('activityLevel');
-  @override
-  late final GeneratedColumnWithTypeConverter<ActivityLevel?, String>
-      activityLevel = GeneratedColumn<String>(
-              'activity_level', aliasedName, true,
-              type: DriftSqlType.string, requiredDuringInsert: false)
-          .withConverter<ActivityLevel?>(
-              $HealthDataTable.$converteractivityLeveln);
-  static const VerificationMeta _cycleDayMeta =
-      const VerificationMeta('cycleDay');
-  @override
-  late final GeneratedColumn<int> cycleDay = GeneratedColumn<int>(
-      'cycle_day', aliasedName, true,
+  late final GeneratedColumn<int> sleepMinutes = GeneratedColumn<int>(
+      'sleep_minutes', aliasedName, true,
       type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _stepsAmountMeta =
+      const VerificationMeta('stepsAmount');
+  @override
+  late final GeneratedColumn<int> stepsAmount = GeneratedColumn<int>(
+      'steps_amount', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _cyclePhaseMeta =
+      const VerificationMeta('cyclePhase');
+  @override
+  late final GeneratedColumnWithTypeConverter<CyclePhase?, String> cyclePhase =
+      GeneratedColumn<String>('cycle_phase', aliasedName, true,
+              type: DriftSqlType.string, requiredDuringInsert: false)
+          .withConverter<CyclePhase?>($HealthDataTable.$convertercyclePhasen);
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+      'source', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns =>
-      [id, date, sleepHours, activityLevel, cycleDay];
+      [id, date, sleepMinutes, stepsAmount, cyclePhase, source];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1799,16 +1804,22 @@ class $HealthDataTable extends HealthData
     } else if (isInserting) {
       context.missing(_dateMeta);
     }
-    if (data.containsKey('sleep_hours')) {
+    if (data.containsKey('sleep_minutes')) {
       context.handle(
-          _sleepHoursMeta,
-          sleepHours.isAcceptableOrUnknown(
-              data['sleep_hours']!, _sleepHoursMeta));
+          _sleepMinutesMeta,
+          sleepMinutes.isAcceptableOrUnknown(
+              data['sleep_minutes']!, _sleepMinutesMeta));
     }
-    context.handle(_activityLevelMeta, const VerificationResult.success());
-    if (data.containsKey('cycle_day')) {
-      context.handle(_cycleDayMeta,
-          cycleDay.isAcceptableOrUnknown(data['cycle_day']!, _cycleDayMeta));
+    if (data.containsKey('steps_amount')) {
+      context.handle(
+          _stepsAmountMeta,
+          stepsAmount.isAcceptableOrUnknown(
+              data['steps_amount']!, _stepsAmountMeta));
+    }
+    context.handle(_cyclePhaseMeta, const VerificationResult.success());
+    if (data.containsKey('source')) {
+      context.handle(_sourceMeta,
+          source.isAcceptableOrUnknown(data['source']!, _sourceMeta));
     }
     return context;
   }
@@ -1823,13 +1834,15 @@ class $HealthDataTable extends HealthData
           .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
       date: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}date'])!,
-      sleepHours: attachedDatabase.typeMapping
-          .read(DriftSqlType.double, data['${effectivePrefix}sleep_hours']),
-      activityLevel: $HealthDataTable.$converteractivityLeveln.fromSql(
+      sleepMinutes: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}sleep_minutes']),
+      stepsAmount: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}steps_amount']),
+      cyclePhase: $HealthDataTable.$convertercyclePhasen.fromSql(
           attachedDatabase.typeMapping.read(
-              DriftSqlType.string, data['${effectivePrefix}activity_level'])),
-      cycleDay: attachedDatabase.typeMapping
-          .read(DriftSqlType.int, data['${effectivePrefix}cycle_day']),
+              DriftSqlType.string, data['${effectivePrefix}cycle_phase'])),
+      source: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}source']),
     );
   }
 
@@ -1838,40 +1851,44 @@ class $HealthDataTable extends HealthData
     return $HealthDataTable(attachedDatabase, alias);
   }
 
-  static JsonTypeConverter2<ActivityLevel, String, String>
-      $converteractivityLevel =
-      const EnumNameConverter<ActivityLevel>(ActivityLevel.values);
-  static JsonTypeConverter2<ActivityLevel?, String?, String?>
-      $converteractivityLeveln =
-      JsonTypeConverter2.asNullable($converteractivityLevel);
+  static JsonTypeConverter2<CyclePhase, String, String> $convertercyclePhase =
+      const EnumNameConverter<CyclePhase>(CyclePhase.values);
+  static JsonTypeConverter2<CyclePhase?, String?, String?>
+      $convertercyclePhasen =
+      JsonTypeConverter2.asNullable($convertercyclePhase);
 }
 
 class HealthDataData extends DataClass implements Insertable<HealthDataData> {
   final int id;
   final DateTime date;
-  final double? sleepHours;
-  final ActivityLevel? activityLevel;
-  final int? cycleDay;
+  final int? sleepMinutes;
+  final int? stepsAmount;
+  final CyclePhase? cyclePhase;
+  final String? source;
   const HealthDataData(
       {required this.id,
       required this.date,
-      this.sleepHours,
-      this.activityLevel,
-      this.cycleDay});
+      this.sleepMinutes,
+      this.stepsAmount,
+      this.cyclePhase,
+      this.source});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['date'] = Variable<DateTime>(date);
-    if (!nullToAbsent || sleepHours != null) {
-      map['sleep_hours'] = Variable<double>(sleepHours);
+    if (!nullToAbsent || sleepMinutes != null) {
+      map['sleep_minutes'] = Variable<int>(sleepMinutes);
     }
-    if (!nullToAbsent || activityLevel != null) {
-      map['activity_level'] = Variable<String>(
-          $HealthDataTable.$converteractivityLeveln.toSql(activityLevel));
+    if (!nullToAbsent || stepsAmount != null) {
+      map['steps_amount'] = Variable<int>(stepsAmount);
     }
-    if (!nullToAbsent || cycleDay != null) {
-      map['cycle_day'] = Variable<int>(cycleDay);
+    if (!nullToAbsent || cyclePhase != null) {
+      map['cycle_phase'] = Variable<String>(
+          $HealthDataTable.$convertercyclePhasen.toSql(cyclePhase));
+    }
+    if (!nullToAbsent || source != null) {
+      map['source'] = Variable<String>(source);
     }
     return map;
   }
@@ -1880,15 +1897,17 @@ class HealthDataData extends DataClass implements Insertable<HealthDataData> {
     return HealthDataCompanion(
       id: Value(id),
       date: Value(date),
-      sleepHours: sleepHours == null && nullToAbsent
+      sleepMinutes: sleepMinutes == null && nullToAbsent
           ? const Value.absent()
-          : Value(sleepHours),
-      activityLevel: activityLevel == null && nullToAbsent
+          : Value(sleepMinutes),
+      stepsAmount: stepsAmount == null && nullToAbsent
           ? const Value.absent()
-          : Value(activityLevel),
-      cycleDay: cycleDay == null && nullToAbsent
+          : Value(stepsAmount),
+      cyclePhase: cyclePhase == null && nullToAbsent
           ? const Value.absent()
-          : Value(cycleDay),
+          : Value(cyclePhase),
+      source:
+          source == null && nullToAbsent ? const Value.absent() : Value(source),
     );
   }
 
@@ -1898,10 +1917,11 @@ class HealthDataData extends DataClass implements Insertable<HealthDataData> {
     return HealthDataData(
       id: serializer.fromJson<int>(json['id']),
       date: serializer.fromJson<DateTime>(json['date']),
-      sleepHours: serializer.fromJson<double?>(json['sleepHours']),
-      activityLevel: $HealthDataTable.$converteractivityLeveln
-          .fromJson(serializer.fromJson<String?>(json['activityLevel'])),
-      cycleDay: serializer.fromJson<int?>(json['cycleDay']),
+      sleepMinutes: serializer.fromJson<int?>(json['sleepMinutes']),
+      stepsAmount: serializer.fromJson<int?>(json['stepsAmount']),
+      cyclePhase: $HealthDataTable.$convertercyclePhasen
+          .fromJson(serializer.fromJson<String?>(json['cyclePhase'])),
+      source: serializer.fromJson<String?>(json['source']),
     );
   }
   @override
@@ -1910,101 +1930,113 @@ class HealthDataData extends DataClass implements Insertable<HealthDataData> {
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'date': serializer.toJson<DateTime>(date),
-      'sleepHours': serializer.toJson<double?>(sleepHours),
-      'activityLevel': serializer.toJson<String?>(
-          $HealthDataTable.$converteractivityLeveln.toJson(activityLevel)),
-      'cycleDay': serializer.toJson<int?>(cycleDay),
+      'sleepMinutes': serializer.toJson<int?>(sleepMinutes),
+      'stepsAmount': serializer.toJson<int?>(stepsAmount),
+      'cyclePhase': serializer.toJson<String?>(
+          $HealthDataTable.$convertercyclePhasen.toJson(cyclePhase)),
+      'source': serializer.toJson<String?>(source),
     };
   }
 
   HealthDataData copyWith(
           {int? id,
           DateTime? date,
-          Value<double?> sleepHours = const Value.absent(),
-          Value<ActivityLevel?> activityLevel = const Value.absent(),
-          Value<int?> cycleDay = const Value.absent()}) =>
+          Value<int?> sleepMinutes = const Value.absent(),
+          Value<int?> stepsAmount = const Value.absent(),
+          Value<CyclePhase?> cyclePhase = const Value.absent(),
+          Value<String?> source = const Value.absent()}) =>
       HealthDataData(
         id: id ?? this.id,
         date: date ?? this.date,
-        sleepHours: sleepHours.present ? sleepHours.value : this.sleepHours,
-        activityLevel:
-            activityLevel.present ? activityLevel.value : this.activityLevel,
-        cycleDay: cycleDay.present ? cycleDay.value : this.cycleDay,
+        sleepMinutes:
+            sleepMinutes.present ? sleepMinutes.value : this.sleepMinutes,
+        stepsAmount: stepsAmount.present ? stepsAmount.value : this.stepsAmount,
+        cyclePhase: cyclePhase.present ? cyclePhase.value : this.cyclePhase,
+        source: source.present ? source.value : this.source,
       );
   @override
   String toString() {
     return (StringBuffer('HealthDataData(')
           ..write('id: $id, ')
           ..write('date: $date, ')
-          ..write('sleepHours: $sleepHours, ')
-          ..write('activityLevel: $activityLevel, ')
-          ..write('cycleDay: $cycleDay')
+          ..write('sleepMinutes: $sleepMinutes, ')
+          ..write('stepsAmount: $stepsAmount, ')
+          ..write('cyclePhase: $cyclePhase, ')
+          ..write('source: $source')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode =>
-      Object.hash(id, date, sleepHours, activityLevel, cycleDay);
+      Object.hash(id, date, sleepMinutes, stepsAmount, cyclePhase, source);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is HealthDataData &&
           other.id == this.id &&
           other.date == this.date &&
-          other.sleepHours == this.sleepHours &&
-          other.activityLevel == this.activityLevel &&
-          other.cycleDay == this.cycleDay);
+          other.sleepMinutes == this.sleepMinutes &&
+          other.stepsAmount == this.stepsAmount &&
+          other.cyclePhase == this.cyclePhase &&
+          other.source == this.source);
 }
 
 class HealthDataCompanion extends UpdateCompanion<HealthDataData> {
   final Value<int> id;
   final Value<DateTime> date;
-  final Value<double?> sleepHours;
-  final Value<ActivityLevel?> activityLevel;
-  final Value<int?> cycleDay;
+  final Value<int?> sleepMinutes;
+  final Value<int?> stepsAmount;
+  final Value<CyclePhase?> cyclePhase;
+  final Value<String?> source;
   const HealthDataCompanion({
     this.id = const Value.absent(),
     this.date = const Value.absent(),
-    this.sleepHours = const Value.absent(),
-    this.activityLevel = const Value.absent(),
-    this.cycleDay = const Value.absent(),
+    this.sleepMinutes = const Value.absent(),
+    this.stepsAmount = const Value.absent(),
+    this.cyclePhase = const Value.absent(),
+    this.source = const Value.absent(),
   });
   HealthDataCompanion.insert({
     this.id = const Value.absent(),
     required DateTime date,
-    this.sleepHours = const Value.absent(),
-    this.activityLevel = const Value.absent(),
-    this.cycleDay = const Value.absent(),
+    this.sleepMinutes = const Value.absent(),
+    this.stepsAmount = const Value.absent(),
+    this.cyclePhase = const Value.absent(),
+    this.source = const Value.absent(),
   }) : date = Value(date);
   static Insertable<HealthDataData> custom({
     Expression<int>? id,
     Expression<DateTime>? date,
-    Expression<double>? sleepHours,
-    Expression<String>? activityLevel,
-    Expression<int>? cycleDay,
+    Expression<int>? sleepMinutes,
+    Expression<int>? stepsAmount,
+    Expression<String>? cyclePhase,
+    Expression<String>? source,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (date != null) 'date': date,
-      if (sleepHours != null) 'sleep_hours': sleepHours,
-      if (activityLevel != null) 'activity_level': activityLevel,
-      if (cycleDay != null) 'cycle_day': cycleDay,
+      if (sleepMinutes != null) 'sleep_minutes': sleepMinutes,
+      if (stepsAmount != null) 'steps_amount': stepsAmount,
+      if (cyclePhase != null) 'cycle_phase': cyclePhase,
+      if (source != null) 'source': source,
     });
   }
 
   HealthDataCompanion copyWith(
       {Value<int>? id,
       Value<DateTime>? date,
-      Value<double?>? sleepHours,
-      Value<ActivityLevel?>? activityLevel,
-      Value<int?>? cycleDay}) {
+      Value<int?>? sleepMinutes,
+      Value<int?>? stepsAmount,
+      Value<CyclePhase?>? cyclePhase,
+      Value<String?>? source}) {
     return HealthDataCompanion(
       id: id ?? this.id,
       date: date ?? this.date,
-      sleepHours: sleepHours ?? this.sleepHours,
-      activityLevel: activityLevel ?? this.activityLevel,
-      cycleDay: cycleDay ?? this.cycleDay,
+      sleepMinutes: sleepMinutes ?? this.sleepMinutes,
+      stepsAmount: stepsAmount ?? this.stepsAmount,
+      cyclePhase: cyclePhase ?? this.cyclePhase,
+      source: source ?? this.source,
     );
   }
 
@@ -2017,15 +2049,18 @@ class HealthDataCompanion extends UpdateCompanion<HealthDataData> {
     if (date.present) {
       map['date'] = Variable<DateTime>(date.value);
     }
-    if (sleepHours.present) {
-      map['sleep_hours'] = Variable<double>(sleepHours.value);
+    if (sleepMinutes.present) {
+      map['sleep_minutes'] = Variable<int>(sleepMinutes.value);
     }
-    if (activityLevel.present) {
-      map['activity_level'] = Variable<String>(
-          $HealthDataTable.$converteractivityLeveln.toSql(activityLevel.value));
+    if (stepsAmount.present) {
+      map['steps_amount'] = Variable<int>(stepsAmount.value);
     }
-    if (cycleDay.present) {
-      map['cycle_day'] = Variable<int>(cycleDay.value);
+    if (cyclePhase.present) {
+      map['cycle_phase'] = Variable<String>(
+          $HealthDataTable.$convertercyclePhasen.toSql(cyclePhase.value));
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
     }
     return map;
   }
@@ -2035,9 +2070,10 @@ class HealthDataCompanion extends UpdateCompanion<HealthDataData> {
     return (StringBuffer('HealthDataCompanion(')
           ..write('id: $id, ')
           ..write('date: $date, ')
-          ..write('sleepHours: $sleepHours, ')
-          ..write('activityLevel: $activityLevel, ')
-          ..write('cycleDay: $cycleDay')
+          ..write('sleepMinutes: $sleepMinutes, ')
+          ..write('stepsAmount: $stepsAmount, ')
+          ..write('cyclePhase: $cyclePhase, ')
+          ..write('source: $source')
           ..write(')'))
         .toString();
   }
