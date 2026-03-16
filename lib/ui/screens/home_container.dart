@@ -6,16 +6,41 @@ import '../models/mood_entry_ui_model.dart';
 import 'home_screen.dart';
 import '../assets/mood_colors.dart';
 
-class HomeContainer extends StatelessWidget {
+class HomeContainer extends StatefulWidget {
   const HomeContainer({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final db = AppDatabase();
-    final repo = LocalRepositoryImpl(db);
+  State<HomeContainer> createState() => _HomeContainerState();
+}
 
+class _HomeContainerState extends State<HomeContainer> {
+
+  late Future<List<MoodEntryWithMood>> _future;
+
+  final db = AppDatabase();
+  late final repo = LocalRepositoryImpl(db);
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  void _load() {
+    _future = repo.getMoodEntriesForDay(DateTime.now());
+  }
+
+  void refresh() {
+    setState(() {
+      _load();
+    });
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
     return FutureBuilder<List<MoodEntryWithMood>>(
-      future: repo.getMoodEntriesForDay(DateTime.now()),
+      future: _future,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Scaffold(
@@ -41,6 +66,7 @@ class HomeContainer extends StatelessWidget {
       id: item.entry.id.toString(),
       time: _formatTime(item.entry.createdAt),
       color: color,
+      moodName: moodName
     );
   }
 

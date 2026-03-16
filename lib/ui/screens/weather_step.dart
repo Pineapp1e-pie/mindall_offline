@@ -5,11 +5,13 @@ import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import '../../data/local/repositories/local_repository.dart';
 import '../../data/local/repositories/weather_repository.dart';
 import '../../domain/models/mood_entry_draft.dart';
 import '../../domain/fill_weather_draft.dart';
 import '../widgets/step_indicator.dart';
 import '../widgets/bottom_button.dart';
+import 'health_step.dart';
 import 'weather_content.dart';
 import 'manual_weather_screen.dart';
 
@@ -152,7 +154,15 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
   }
 
   void _saveAndContinue() {
-    Navigator.pop(context, _draft);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => HealthStepScreen(
+          draft: _draft,
+          moodColor: widget.moodColor,
+        ),
+      ),
+    );
   }
 
   void _navigateToManualInput() async {
@@ -293,7 +303,6 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
           ),
 
           // Кнопка Далее
-          if (weather != null)
             BottomButton(
               text: 'Далее',
               color: widget.moodColor,
@@ -346,7 +355,6 @@ class _CompactIconButton extends StatelessWidget {
   final String tooltip;
 
   const _CompactIconButton({
-    super.key,
     this.icon,
     this.svgPath,
     required this.color,

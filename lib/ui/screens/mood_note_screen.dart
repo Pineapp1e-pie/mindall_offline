@@ -1,16 +1,21 @@
+// mood_note_screen.dart
+
 import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_sound/public/flutter_sound_player.dart';
-import 'package:flutter_sound/public/flutter_sound_recorder.dart';
+import 'package:flutter_sound/public/flutter_sound_recorder.dart'; // 👈 для записи
+import 'package:just_audio/just_audio.dart'; // 👈 для воспроизведения
 import 'package:flutter_svg/svg.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mindall/ui/screens/weather_step.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+
 import '../../domain/models/mood_entry_draft.dart';
 import '../widgets/step_indicator.dart';
 import '../widgets/bottom_button.dart';
+import '../widgets/voice_player.dart';
 
 class MoodNoteScreen extends StatefulWidget {
   final MoodEntryDraft draft;
@@ -31,38 +36,27 @@ class MoodNoteScreen extends StatefulWidget {
 class _MoodNoteScreenState extends State<MoodNoteScreen> {
   late MoodEntryDraft _draft;
   final _textController = TextEditingController();
-  final _recorder = FlutterSoundRecorder();
+
+  // Для записи используем FlutterSoundRecorder
+  final _recorder = FlutterSoundRecorder(); // 👈 ВЕРНУЛИ!
+
+  // // Для воспроизведения используем just_audio
+  // final _audioPlayer = AudioPlayer();
+
   bool _isRecording = false;
   String? _recordingPath;
   Duration _recordingDuration = Duration.zero;
   Timer? _recordingTimer;
-
-  final _player = FlutterSoundPlayer();
-  bool _isPlayerReady = false;
-  bool _isPlaying = false;
 
   @override
   void initState() {
     super.initState();
     _draft = widget.draft;
 
-    _recorder.openRecorder();
+    _recorder.openRecorder(); // 👈 открываем рекордер
 
     if (_draft.note.isNotEmpty) {
       _textController.text = _draft.note;
-    }
-
-    _initPlayer();
-  }
-
-  Future<void> _initPlayer() async {
-    try {
-      await _player.openPlayer();
-      setState(() {
-        _isPlayerReady = true;
-      });
-    } catch (e) {
-      print('Error initializing player: $e');
     }
   }
 
@@ -98,18 +92,49 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
     });
   }
 
-  void _toggleRecording() {
+  Future<void> _toggleRecording() async {
     if (_isRecording) {
       _stopRecording();
-    } else {
+      return;
+    }
+
+    final status = await Permission.microphone.request();
+
+    if (status.isGranted) {
       _startRecording();
+    } else if (status.isPermanentlyDenied) {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: const Text(
+            'Нет доступа к микрофону',
+            style: TextStyle(color: Colors.white, fontFamily: 'DotGothic'),
+          ),
+          content: const Text(
+            'Разреши доступ к микрофону в настройках телефона.',
+            style: TextStyle(color: Color(0xFFC0C0C0), fontFamily: 'DotGothic'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Отмена', style: TextStyle(color: Colors.grey)),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                openAppSettings();
+              },
+              child: const Text('Настройки', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
     }
   }
 
   void _deleteRecording() {
-    if (_isPlaying) {
-      _stopPlaying();
-    }
     setState(() {
       _recordingPath = null;
       _recordingDuration = Duration.zero;
@@ -117,49 +142,8 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
     });
   }
 
-  void _playRecording() async {
-    if (_recordingPath == null || !_isPlayerReady || _isPlaying) return;
 
-    try {
-      setState(() {
-        _isPlaying = true;
-      });
 
-      await _player.startPlayer(
-        fromURI: _recordingPath,
-        whenFinished: () {
-          if (mounted) {
-            setState(() {
-              _isPlaying = false;
-            });
-          }
-        },
-      );
-    } catch (e) {
-      print('Error playing recording: $e');
-      if (mounted) {
-        setState(() {
-          _isPlaying = false;
-        });
-      }
-    }
-  }
-
-  void _stopPlaying() async {
-    if (!_isPlaying) return;
-
-    try {
-      await _player.stopPlayer();
-      setState(() {
-        _isPlaying = false;
-      });
-    } catch (e) {
-      print('Error stopping player: $e');
-      setState(() {
-        _isPlaying = false;
-      });
-    }
-  }
 
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
@@ -171,11 +155,7 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
   @override
   void dispose() {
     _recordingTimer?.cancel();
-    if (_isPlaying) {
-      _stopPlaying();
-    }
-    _recorder.closeRecorder();
-    _player.closePlayer();
+    _recorder.closeRecorder(); // 👈 закрываем рекордер
     super.dispose();
   }
 
@@ -238,18 +218,20 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
     _draft = _draft.copyWith(note: _textController.text);
     _goToWeather();
   }
+
   void _goToWeather() {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => WeatherStepScreen(
-          draft: _draft, moodColor: widget.moodColor,
+          draft: _draft,
+          moodColor: widget.moodColor,
         ),
       ),
     );
   }
-  @override
 
+  @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final imageSize = screenWidth - 48;
@@ -271,10 +253,7 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
               bottom: false,
               child: Column(
                 children: [
-                  /// ───────── HEADER (НЕ СКРОЛЛИТСЯ)
                   _Header(),
-
-                  /// ───────── BODY (СКРОЛЛИТСЯ)
                   Expanded(
                     child: SingleChildScrollView(
                       physics: const BouncingScrollPhysics(),
@@ -343,84 +322,12 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
                               ],
                             ),
 
-                          /// Аудио-превью
+                          /// Плеер для готовой записи
                           if (_recordingPath != null && !_isRecording)
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 16),
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: const Color(0xFF555555),
-                                  width: 2,
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  GestureDetector(
-                                    onTap: _isPlaying ? _stopPlaying : _playRecording,
-                                    child: Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        color: widget.moodColor.withOpacity(0.2),
-                                        borderRadius: BorderRadius.circular(20),
-                                        border: Border.all(
-                                          color: widget.moodColor,
-                                          width: 2,
-                                        ),
-                                      ),
-                                      child: Icon(
-                                        _isPlaying ? Icons.stop : Icons.play_arrow,
-                                        color: widget.moodColor,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          'Голосовое сообщение',
-                                          style: TextStyle(
-                                            fontFamily: 'DotGothic',
-                                            color: Colors.white,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                        Text(
-                                          _formatDuration(_recordingDuration),
-                                          style: const TextStyle(
-                                            fontFamily: 'DotGothic',
-                                            color: Color(0xFF777777),
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  GestureDetector(
-                                    onTap: _deleteRecording,
-                                    child: Container(
-                                      width: 32,
-                                      height: 32,
-                                      decoration: BoxDecoration(
-                                        color: Colors.red.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(16),
-                                        border: Border.all(
-                                          color: Colors.red,
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: const Icon(
-                                        Icons.delete_outline,
-                                        color: Colors.red,
-                                        size: 18,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                            VoicePlayerWidget(
+                              filePath: _recordingPath!,
+                              accentColor: widget.moodColor,
+                              onDelete: _deleteRecording,
                             ),
 
                           /// Кнопки медиа
@@ -499,8 +406,6 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
                                           ),
                                         ),
                                       ),
-
-                                      /// ❌ Кнопка удаления
                                       Positioned(
                                         top: 8,
                                         right: 8,
@@ -536,8 +441,6 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
                                 },
                               ),
                             ),
-
-
                         ],
                       ),
                     ),
@@ -547,7 +450,7 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
             ),
           ),
 
-          /// ───────── КНОПКА (ФИКС)
+          /// Кнопка "Далее"
           BottomButton(
             text: 'Далее',
             color: widget.moodColor,
@@ -557,7 +460,6 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
       ),
     );
   }
-
 
   Widget _Header() {
     return Padding(
@@ -589,11 +491,8 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
       ),
     );
   }
-
-
-
-
 }
+
 class _MediaButton extends StatelessWidget {
   final Widget icon;
   final VoidCallback onTap;
@@ -674,7 +573,3 @@ class _RecordingDotState extends State<_RecordingDot>
     );
   }
 }
-
-
-
-

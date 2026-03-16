@@ -277,7 +277,6 @@ import 'mood_context_screen.dart';
 class MoodMatrixScreen extends StatefulWidget {
   final MoodCategory category;
 
-
   const MoodMatrixScreen({
     super.key,
     required this.category,

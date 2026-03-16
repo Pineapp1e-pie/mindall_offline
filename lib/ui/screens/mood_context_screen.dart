@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' show Value, BooleanExpressionOperators;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../data/local/app_database.dart';
+import '../../data/local/repositories/local_repository.dart';
 import '../../domain/models/mood_entry_draft.dart';
 import '../widgets/bottom_button.dart';
 import '../widgets/step_indicator.dart';
@@ -13,6 +14,7 @@ class MoodContextScreen extends StatefulWidget {
   final MoodEntryDraft draft;
   final String moodName;
   final Color moodColor;
+
 
   const MoodContextScreen({
     super.key,

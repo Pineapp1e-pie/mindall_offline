@@ -13,4 +13,18 @@ class WeatherDraft {
     this.precipitation,
     required this.source,
   });
-}
+
+//   WeatherDraft copyWith({
+//     Cloudiness? cloudiness,
+//     TemperatureCategory? temperature,
+//     PrecipitationType? precipitation,
+//     String? source,
+//   }) {
+//     return WeatherDraft(
+//       cloudiness: cloudiness ?? this.cloudiness,
+//       temperature: temperature ?? this.temperature,
+//       precipitation: precipitation ?? this.precipitation,
+//       source: source ?? this.source,
+//     );
+//   }
+ }

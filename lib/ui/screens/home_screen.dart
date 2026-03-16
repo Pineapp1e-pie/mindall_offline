@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../data/local/repositories/local_repository.dart';
 import '../models/mood_entry_ui_model.dart';
 import '../widgets/pixel_circle.dart';
 import 'mood_category_screen.dart';
 import 'package:pixelarticons/pixelarticons.dart';
+
+import 'mood_entry_detail_screen.dart';
+
+import 'package:provider/provider.dart';
 
 
 
@@ -11,9 +16,11 @@ import 'package:pixelarticons/pixelarticons.dart';
 class HomeScreen extends StatelessWidget {
   final List<MoodEntryUiModel> entries;
 
+
   const HomeScreen({
     super.key,
     required this.entries,
+
   });
 
   @override
@@ -53,6 +60,7 @@ class HomeScreen extends StatelessWidget {
                     builder: (_) => const MoodCategoryScreen(),
                   ),
                 );
+
               },
             ),
 
@@ -139,7 +147,15 @@ class _MoodItem extends StatelessWidget {
         isLeft ? Alignment.centerLeft : Alignment.centerRight,
         child: GestureDetector(
           onTap: () {
-            // TODO: открыть подробную запись
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => MoodEntryDetailScreen(
+                  entry: entry,
+                  repository: context.read<LocalRepository>(),
+                ),
+              ),
+            );
           },
           child: PixelCircle(
             size: 140,

@@ -1,5 +1,5 @@
 import 'package:mindall/domain/models/weather_draft.dart';
-
+import 'health_draft.dart';
 
 
 class MoodEntryDraft {
@@ -15,6 +15,8 @@ class MoodEntryDraft {
 
   final WeatherDraft? weather;
 
+  final HealthDraft? health;
+
   MoodEntryDraft({
     required this.moodId,
     this.placeTagIds = const [],
@@ -24,6 +26,7 @@ class MoodEntryDraft {
     this.imagePaths = const [],
     this.recordPath = '',
     this.weather,
+    this.health,
   });
 
   MoodEntryDraft copyWith({
@@ -34,6 +37,7 @@ class MoodEntryDraft {
     List<String>? imagePaths,
     String? recordPath,
     WeatherDraft? weather,
+    final HealthDraft? health,
   }) {
     return MoodEntryDraft(
       moodId: moodId,
@@ -44,6 +48,8 @@ class MoodEntryDraft {
       imagePaths: imagePaths ?? this.imagePaths,
       recordPath: recordPath ?? this.recordPath,
       weather: weather ?? this.weather,
+      health: health ?? this.health,
+
     );
   }
 }

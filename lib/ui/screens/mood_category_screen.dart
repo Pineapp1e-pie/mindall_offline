@@ -8,6 +8,7 @@ import 'mood_selection_screen.dart';
 class MoodCategoryScreen extends StatelessWidget {
   const MoodCategoryScreen({super.key});
 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -50,7 +51,7 @@ class MoodCategoryScreen extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                         builder: (_) =>
-                            MoodMatrixScreen(category: category),
+                            MoodMatrixScreen(category: category,),
                       ),
                     );
                   },

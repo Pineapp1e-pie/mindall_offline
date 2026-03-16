@@ -1,7 +1,5 @@
-import '../../data/local/tables/health_data.dart';
-import '../models/chart_models.dart';
 import '../../data/local/repositories/local_repository.dart';
-import '../../data/local/app_database.dart';
+import '../models/chart_models.dart';
 
 enum Period {
   day,
@@ -43,12 +41,17 @@ class AnalyticsService {
     final points = <ScatterPoint>[];
 
     for (final stat in stats) {
-      final health = await repository.getHealthDataForDay(stat.date);
-      if (health?.sleepHours == null) continue;
+      final health =
+      await repository.getHealthDataForDay(stat.date);
+
+      if (health?.sleepMinutes == null) continue;
+
+      final sleepHours =
+          health!.sleepMinutes! / 60.0;
 
       points.add(
         ScatterPoint(
-          health!.sleepHours!,
+          sleepHours,
           stat.moodValue,
         ),
       );
@@ -70,36 +73,21 @@ class AnalyticsService {
     final points = <ScatterPoint>[];
 
     for (final stat in stats) {
-      final health = await repository.getHealthDataForDay(stat.date);
-      if (health?.activityLevel == null) continue;
+      final health =
+      await repository.getHealthDataForDay(stat.date);
 
-      final activityValue = _mapActivityToNumber(
-        health!.activityLevel!,
-      );
+      if (health?.stepsAmount == null) continue;
+
+      final steps = health!.stepsAmount!.toDouble();
 
       points.add(
         ScatterPoint(
-          activityValue,
+          steps,
           stat.moodValue,
         ),
       );
     }
 
     return points;
-  }
-
-  // ------------------------------
-  // helpers
-  // ------------------------------
-
-  double _mapActivityToNumber(ActivityLevel level) {
-    switch (level) {
-      case ActivityLevel.low:
-        return 0;
-      case ActivityLevel.medium:
-        return 1;
-      case ActivityLevel.high:
-        return 2;
-    }
   }
 }

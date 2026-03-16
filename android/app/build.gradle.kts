@@ -7,12 +7,15 @@ plugins {
 
 android {
     namespace = "com.example.mindall"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36  // или flutter.compileSdkVersion если хотите оставить как было
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+
+        // Добавьте эту строку
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -20,20 +23,22 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.mindall"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        minSdk = 26
+        targetSdk = 36 // Пробуем 35
+        versionCode = 25  // УВЕЛИЧЬТЕ СИЛЬНО! (было 20)
+        versionName = "2.0.0"  // Меняем версию
+        multiDexEnabled = true
+//        targetSdk = flutter.targetSdkVersion
+//        versionCode = flutter.versionCode
+//        versionName = flutter.versionName
+
+        // Добавьте эту строку
+        multiDexEnabled = true
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -41,4 +46,9 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Добавьте эту зависимость
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

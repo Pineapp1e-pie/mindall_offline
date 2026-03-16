@@ -1,28 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:provider/provider.dart';
+
 
 import 'data/local/app_database.dart';
-import 'data/local/static/context_tags_seed.dart';
+import 'data/local/repositories/local_repository.dart';
+import 'data/local/repositories/local_repository_impl.dart';
 import 'data/local/static/moods_initializer.dart';
-import 'data/local/debug/fake_data_generator.dart';
+import 'data/local/static/context_tags_seed.dart';
 
 import 'ui/screens/home_container.dart';
 import 'package:intl/intl.dart';
+
+
 
 void main() async {
   Intl.defaultLocale = 'ru';
 
   WidgetsFlutterBinding.ensureInitialized();
 
+  final database = AppDatabase();
+  final repository = LocalRepositoryImpl(database);
 
-  final db = AppDatabase();
+  await MoodsInitializer(database).init();
+  await ContextTagsInitializer(database).init();
 
-  // 1️⃣ СИДЫ (выполняется безопасно, без дублей)
-  await MoodsInitializer(db).init();
-  await ContextTagsInitializer(db).init();
-
-
-  runApp(const MyApp());
+  runApp(
+    Provider<LocalRepository>(
+      create: (_) => repository,
+      child: const MyApp(),
+    ),
+      );
 }
 
 class MyApp extends StatelessWidget {
