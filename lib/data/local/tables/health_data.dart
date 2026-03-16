@@ -1,23 +1,20 @@
 import 'package:drift/drift.dart';
 
-import 'mood_entries.dart';
+import '../../../domain/models/health_draft.dart';
 
-enum ActivityLevel {
-  low,
-  medium,
-  high,
-}
 
 
 class HealthData extends Table {
   IntColumn get id => integer().autoIncrement()();
 
-  DateTimeColumn get date => dateTime()();
+  DateTimeColumn get date => dateTime().unique()();
 
-  RealColumn get sleepHours => real().nullable()();
+  IntColumn get sleepMinutes => integer().nullable()();
 
-  TextColumn get activityLevel =>
-      textEnum<ActivityLevel>().nullable()();
+  IntColumn get stepsAmount => integer().nullable()();
 
-  IntColumn get cycleDay => integer().nullable()();
+  TextColumn get cyclePhase =>
+      textEnum<CyclePhase>().nullable()();
+
+  TextColumn get source => text().nullable()();
 }
