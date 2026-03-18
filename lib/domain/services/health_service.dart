@@ -80,7 +80,7 @@ class HealthService {
       // Типы данных для Android 15
       final types = [
         HealthDataType.STEPS,
-        HealthDataType.SLEEP_ASLEEP,
+        HealthDataType.SLEEP_SESSION,
       ];
 
       print('🟡 Requesting permissions for types: $types');
@@ -144,7 +144,7 @@ class HealthService {
       double totalSteps = 0;
       for (final item in data) {
         print('   - Step: ${item.value} at ${item.dateFrom}');
-        totalSteps += item.value as double;
+        totalSteps += (item.value as NumericHealthValue).numericValue.toDouble();
       }
 
       print('✅ Total steps: $totalSteps');
@@ -166,7 +166,7 @@ class HealthService {
       print('🟡 Fetching sleep from $start to $now');
 
       final data = await _health.getHealthDataFromTypes(
-        types: [HealthDataType.SLEEP_ASLEEP],
+        types: [HealthDataType.SLEEP_SESSION],
         startTime: start,
         endTime: now,
       );
@@ -180,8 +180,9 @@ class HealthService {
 
       double totalMinutes = 0;
       for (final item in data) {
-        print('   - Sleep: ${item.value} minutes');
-        totalMinutes += item.value as double;
+        final minutes = item.dateTo.difference(item.dateFrom).inMinutes.toDouble();
+        print('   - Sleep session: ${item.dateFrom} → ${item.dateTo} = $minutes min');
+        totalMinutes += minutes;
       }
 
       print('✅ Total sleep: $totalMinutes minutes');

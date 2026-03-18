@@ -51,10 +51,17 @@
 
         </activity>
 
-        <!-- Мета-тег для Health Connect -->
-        <meta-data
-            android:name="health_connect_import"
-            android:value="true" />
+        <!-- Обязательно для Android 14+ / Health Connect -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
 
         <meta-data
             android:name="flutterEmbedding"
@@ -70,6 +77,9 @@
 
         <!-- Health Connect package query -->
         <package android:name="com.google.android.apps.healthdata"/>
+        <intent>
+            <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+        </intent>
     </queries>
 
 </manifest>
