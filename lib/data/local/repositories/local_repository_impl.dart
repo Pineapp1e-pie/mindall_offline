@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:mindall/data/local/tables/health_data.dart';
 
@@ -152,14 +153,31 @@ class LocalRepositoryImpl implements LocalRepository {
         ContextDetailsCompanion.insert(
           moodEntryId: entryId,
           note: Value(draft.note.isEmpty ? null : draft.note),
-          voicePath: Value(draft.recordPath),
+          voicePath: Value(draft.recordPath.isEmpty ? null : draft.recordPath),
           photoPath: Value(
-            draft.imagePaths.isNotEmpty ? draft.imagePaths.first : null,
+            draft.imagePaths.isNotEmpty
+                ? jsonEncode(draft.imagePaths)
+                : null,
           ),
         ),
       );
 
-      /// 3. health
+      /// 3. теги (место, действие, общество)
+      final allTagIds = [
+        ...draft.placeTagIds,
+        ...draft.activityTagIds,
+        ...draft.socialTagIds,
+      ];
+      for (final tagId in allTagIds) {
+        await db.into(db.moodEntryTags).insert(
+          MoodEntryTagsCompanion.insert(
+            moodEntryId: entryId,
+            tagId: tagId,
+          ),
+        );
+      }
+
+      /// 4. health
       if (draft.health != null) {
         await db.into(db.healthData).insert(
           HealthDataCompanion.insert(

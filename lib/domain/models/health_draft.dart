@@ -14,6 +14,22 @@ class HealthDraft {
     this.cyclePhase,
     required this.source,
   });
+
+  HealthDraft copyWith({
+    DateTime? date,
+    int? sleepMinutes,
+    int? stepsAmount,
+    CyclePhase? cyclePhase,
+    String? source,
+  }) {
+    return HealthDraft(
+      date: date ?? this.date,
+      sleepMinutes: sleepMinutes ?? this.sleepMinutes,
+      stepsAmount: stepsAmount ?? this.stepsAmount,
+      cyclePhase: cyclePhase ?? this.cyclePhase,
+      source: source ?? this.source,
+    );
+  }
 }
 
 enum CyclePhase {

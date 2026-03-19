@@ -16,6 +16,7 @@ class HomeContainer extends StatefulWidget {
 class _HomeContainerState extends State<HomeContainer> {
 
   late Future<List<MoodEntryWithMood>> _future;
+  DateTime _selectedDate = DateTime.now();
 
   final db = AppDatabase();
   late final repo = LocalRepositoryImpl(db);
@@ -27,15 +28,27 @@ class _HomeContainerState extends State<HomeContainer> {
   }
 
   void _load() {
-    _future = repo.getMoodEntriesForDay(DateTime.now());
+    final date = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    _future = repo.getMoodEntriesForDay(date);
   }
 
   void refresh() {
+    setState(() => _load());
+  }
+
+  void _onDateChanged(DateTime date) {
     setState(() {
+      _selectedDate = date;
       _load();
     });
   }
 
+  bool get _isToday {
+    final now = DateTime.now();
+    return _selectedDate.year == now.year &&
+        _selectedDate.month == now.month &&
+        _selectedDate.day == now.day;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,11 +62,14 @@ class _HomeContainerState extends State<HomeContainer> {
           );
         }
 
-        final entries = snapshot.data!
-            .map(_mapToUiModel)
-            .toList();
+        final entries = snapshot.data!.map(_mapToUiModel).toList();
 
-        return HomeScreen(entries: entries);
+        return HomeScreen(
+          entries: entries,
+          selectedDate: _selectedDate,
+          isToday: _isToday,
+          onDateChanged: _onDateChanged,
+        );
       },
     );
   }
@@ -66,7 +82,8 @@ class _HomeContainerState extends State<HomeContainer> {
       id: item.entry.id.toString(),
       time: _formatTime(item.entry.createdAt),
       color: color,
-      moodName: moodName
+      moodName: moodName,
+      createdAt: item.entry.createdAt,
     );
   }
 

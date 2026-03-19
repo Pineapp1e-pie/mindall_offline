@@ -1,17 +1,19 @@
 // health_step.dart (с Provider)
 
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // 👈 добавить импорт
-import 'package:health/health.dart';
+import 'package:provider/provider.dart';
 
-import '../../data/local/repositories/local_repository.dart'; // 👈 только интерфейс
+import '../../data/local/repositories/local_repository.dart';
 import '../../domain/models/mood_entry_draft.dart';
 import '../../domain/models/health_draft.dart';
+import '../../domain/models/user_profile.dart';
 import '../../domain/services/health_service.dart';
+import '../../domain/services/user_profile_service.dart';
+import '../../domain/services/cycle_calculator.dart';
 import '../widgets/step_indicator.dart';
 import '../widgets/bottom_button.dart';
 
+import 'cycle_setup_screen.dart';
 import 'health_content.dart';
 import 'home_container.dart';
 import 'manual_health_screen.dart';
@@ -38,6 +40,8 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
   bool _isLoadingExisting = true;
 
   final HealthService _healthService = HealthService();
+  final UserProfileService _profileService = UserProfileService();
+  UserProfile? _userProfile;
   final int _currentStep = 3;
 
   @override
@@ -49,6 +53,112 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
     _repository = context.read<LocalRepository>();
 
     _loadTodayHealth();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final profile = await _profileService.load();
+    if (!mounted) return;
+
+    if (profile == null) {
+      // Первый запуск — спросить пол
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showGenderDialog());
+    } else {
+      setState(() => _userProfile = profile);
+      // Если женщина и нет настроек цикла — предложить настроить
+      if (profile.isFemale && profile.cycleSettings == null) {
+        WidgetsBinding.instance.addPostFrameCallback(
+            (_) => _openCycleSetup());
+      }
+    }
+  }
+
+  Future<void> _showGenderDialog() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF18221C),
+        title: const Text(
+          'Ваш пол',
+          style: TextStyle(
+              fontFamily: 'DotGothic', color: Colors.white, fontSize: 16),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _genderOption(ctx, 'Женский', Gender.female),
+            const SizedBox(height: 8),
+            _genderOption(ctx, 'Мужской', Gender.male),
+            const SizedBox(height: 8),
+            _genderOption(ctx, 'Предпочитаю не указывать', Gender.preferNotToSay),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _genderOption(BuildContext ctx, String label, Gender gender) {
+    return GestureDetector(
+      onTap: () async {
+        await _profileService.saveGender(gender);
+        final profile = UserProfile(gender: gender);
+        if (!mounted) return;
+        setState(() => _userProfile = profile);
+        if (!ctx.mounted) return;
+        Navigator.of(ctx).pop();
+        if (gender == Gender.female) {
+          _openCycleSetup();
+        }
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'DotGothic',
+            color: Colors.white,
+            fontSize: 13,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openCycleSetup() async {
+    final settings = await Navigator.push<CycleSettings>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CycleSetupScreen(
+          moodColor: widget.moodColor,
+          initial: _userProfile?.cycleSettings,
+        ),
+      ),
+    );
+
+    if (settings != null && mounted) {
+      final updatedProfile = UserProfile(
+        gender: _userProfile?.gender ?? Gender.female,
+        cycleSettings: settings,
+      );
+      setState(() {
+        _userProfile = updatedProfile;
+        // Обновить фазу в черновике
+        final phase = CycleCalculator.calculate(settings);
+        _draft = _draft.copyWith(
+          health: _draft.health?.copyWith(cyclePhase: phase) ??
+              HealthDraft(
+                date: DateTime.now(),
+                cyclePhase: phase,
+                source: 'auto',
+              ),
+        );
+      });
+    }
   }
 
   Future<void> _loadTodayHealth() async {
@@ -94,11 +204,16 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
       final steps = await _healthService.getStepAmount();
 
       final now = DateTime.now();
+      final cycleSettings = _userProfile?.cycleSettings;
+      final cyclePhase = cycleSettings != null
+          ? CycleCalculator.calculate(cycleSettings)
+          : _draft.health?.cyclePhase;
+
       final health = HealthDraft(
         date: DateTime(now.year, now.month, now.day),
         sleepMinutes: sleep,
         stepsAmount: steps,
-        cyclePhase: null,
+        cyclePhase: cyclePhase,
         source: "auto",
       );
 
@@ -120,6 +235,8 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
         builder: (_) => ManualHealthScreen(
           moodColor: widget.moodColor,
           initialHealth: _draft.health,
+          isFemale: _userProfile?.isFemale ?? false,
+          onUpdateCycle: _userProfile?.isFemale == true ? _openCycleSetup : null,
         ),
       ),
     );
@@ -231,7 +348,7 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
                             padding: const EdgeInsets.symmetric(horizontal: 24),
                             child: HealthContent(
                               health: health,
-                              source: health.source ?? 'manual',
+                              source: health.source,
                               moodColor: widget.moodColor,
                             ),
                           ),

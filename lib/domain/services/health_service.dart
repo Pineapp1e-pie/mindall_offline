@@ -69,6 +69,7 @@
 
 import 'package:health/health.dart';
 import 'package:flutter/services.dart';
+import '../models/health_draft.dart';
 
 class HealthService {
   final Health _health = Health();
@@ -81,12 +82,13 @@ class HealthService {
       final types = [
         HealthDataType.STEPS,
         HealthDataType.SLEEP_SESSION,
+        HealthDataType.MENSTRUATION_FLOW,
       ];
 
       print('🟡 Requesting permissions for types: $types');
 
-      // Для health 11.0.0 permissions передаются так
       final permissions = [
+        HealthDataAccess.READ,
         HealthDataAccess.READ,
         HealthDataAccess.READ,
       ];
@@ -178,8 +180,17 @@ class HealthService {
         return null;
       }
 
+      // Берём только сессии, закончившиеся сегодня (последняя ночь)
+      final todayMidnight = DateTime(now.year, now.month, now.day);
+      final todaySessions = data.where((item) => item.dateTo.isAfter(todayMidnight)).toList();
+
+      if (todaySessions.isEmpty) {
+        print('ℹ️ No sleep data for today');
+        return null;
+      }
+
       double totalMinutes = 0;
-      for (final item in data) {
+      for (final item in todaySessions) {
         final minutes = item.dateTo.difference(item.dateFrom).inMinutes.toDouble();
         print('   - Sleep session: ${item.dateFrom} → ${item.dateTo} = $minutes min');
         totalMinutes += minutes;
@@ -190,6 +201,35 @@ class HealthService {
 
     } catch (e) {
       print('❌ Error in getSleepMinutes: $e');
+      return null;
+    }
+  }
+
+  Future<CyclePhase?> getCyclePhase() async {
+    print('🟡 HealthService: getCyclePhase() started');
+
+    try {
+      final now = DateTime.now();
+      final start = now.subtract(const Duration(days: 7));
+
+      final data = await _health.getHealthDataFromTypes(
+        types: [HealthDataType.MENSTRUATION_FLOW],
+        startTime: start,
+        endTime: now,
+      );
+
+      print('✅ Received ${data.length} menstruation entries');
+
+      if (data.isEmpty) {
+        print('ℹ️ No menstruation data found');
+        return null;
+      }
+
+      // Есть flow за последние 7 дней — фаза менструации
+      return CyclePhase.menstruation;
+
+    } catch (e) {
+      print('❌ Error in getCyclePhase: $e');
       return null;
     }
   }

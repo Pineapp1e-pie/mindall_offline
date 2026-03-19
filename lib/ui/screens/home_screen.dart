@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../data/local/repositories/local_repository.dart';
 import '../models/mood_entry_ui_model.dart';
 import '../widgets/pixel_circle.dart';
+import '../assets/mood_colors.dart';
 import 'mood_category_screen.dart';
 import 'package:pixelarticons/pixelarticons.dart';
 
@@ -15,20 +16,53 @@ import 'package:provider/provider.dart';
 
 class HomeScreen extends StatelessWidget {
   final List<MoodEntryUiModel> entries;
-
+  final DateTime selectedDate;
+  final bool isToday;
+  final ValueChanged<DateTime> onDateChanged;
 
   const HomeScreen({
     super.key,
     required this.entries,
-
+    required this.selectedDate,
+    required this.isToday,
+    required this.onDateChanged,
   });
+
+  // Детерминированный цвет по дате — не меняется при перерисовке
+  Color _colorForDate(DateTime date) {
+    final colors = moodColors.values.toList();
+    final index = (date.day + date.month * 31) % colors.length;
+    return colors[index];
+  }
+
+  Future<void> _pickDate(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      locale: const Locale('ru', 'RU'),
+      builder: (context, child) => Theme(
+        data: ThemeData.dark().copyWith(
+          colorScheme: const ColorScheme.dark(primary: Colors.white),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) onDateChanged(picked);
+  }
 
   @override
   Widget build(BuildContext context) {
-
-    final now = DateTime.now();
-    final formattedDate =
-    DateFormat('d MMM yyyy', 'ru').format(now);
+    final formattedDate = DateFormat('d MMM yyyy', 'ru').format(selectedDate);
+    final dayColor = _colorForDate(selectedDate);
+    const accusative = {
+      'среда': 'среду',
+      'пятница': 'пятницу',
+      'суббота': 'субботу',
+    };
+    final weekday = DateFormat('EEEE', 'ru').format(selectedDate).toLowerCase();
+    final fullDayName = accusative[weekday] ?? weekday;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0E1511),
@@ -38,60 +72,95 @@ class HomeScreen extends StatelessWidget {
             const SizedBox(height: 24),
 
             // ---------- Заголовок ----------
-            const Text(
-              'Как себя\nчувствуешь?',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: 'DotGothic',
-                fontSize: 28,
-                color: Colors.white,
-                height: 1.6,
+            if (isToday)
+              const Text(
+                'Как себя\nчувствуешь?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'DotGothic',
+                  fontSize: 28,
+                  color: Colors.white,
+                  height: 1.6,
+                ),
+              )
+            else
+              Text.rich(
+
+
+
+                TextSpan(
+                  children: [
+                    const TextSpan(text: 'Записи за\n'),
+                    TextSpan(
+                      text: fullDayName,
+                      style: TextStyle(color: dayColor),
+                    ),
+                  ],
+                ),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontFamily: 'DotGothic',
+                  fontSize: 28,
+                  color: Colors.white,
+                  height: 1.6,
+                ),
               ),
-            ),
 
             const SizedBox(height: 24),
 
-            // ---------- Кнопка + ----------
-            _AddButton(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const MoodCategoryScreen(),
-                  ),
-                );
-
-              },
-            ),
-
+            // ---------- Кнопка + (только сегодня) ----------
+            if (isToday)
+              _AddButton(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const MoodCategoryScreen(),
+                    ),
+                  );
+                },
+              ),
 
             const SizedBox(height: 32),
 
-            // ---------- СЕГОДНЯ / ДАТА ----------
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Сегодня',
-                    style: TextStyle(
-                      fontFamily: 'DotGothic',
-                      fontSize: 16,
-                      color: Colors.white,
-                      letterSpacing: 1,
+            // ---------- ДАТА ----------
+            GestureDetector(
+              onTap: () => _pickDate(context),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Row(
+                  mainAxisAlignment: isToday
+                      ? MainAxisAlignment.spaceBetween
+                      : MainAxisAlignment.center,
+                  children: [
+                    if (isToday)
+                      const Text(
+                        'Сегодня',
+                        style: TextStyle(
+                          fontFamily: 'DotGothic',
+                          fontSize: 16,
+                          color: Colors.white,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    Row(
+                      children: [
+                        Text(
+                          formattedDate,
+                          style: const TextStyle(
+                            fontFamily: 'DotGothic',
+                            fontSize: 16,
+                            color: Colors.white,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.expand_more,
+                            color: Colors.white54, size: 18),
+                      ],
                     ),
-                  ),
-                  Text(
-                    formattedDate,
-                    style: const TextStyle(
-                      fontFamily: 'DotGothic',
-                      fontSize: 16,
-                      color: Colors.white,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
 
@@ -103,7 +172,18 @@ class HomeScreen extends StatelessWidget {
 
             Expanded(
               child: entries.isEmpty
-                  ? const SizedBox()
+                  ? Center(
+                      child: Text(
+                        isToday ? 'Нет записей' : 'В этот день\nзаписей нет',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontFamily: 'DotGothic',
+                          color: Colors.white24,
+                          fontSize: 16,
+                          height: 1.6,
+                        ),
+                      ),
+                    )
                   : ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 32),
                 itemCount: entries.length,

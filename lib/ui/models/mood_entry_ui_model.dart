@@ -5,11 +5,13 @@ class MoodEntryUiModel {
   final String moodName;
   final String time;
   final Color color;
+  final DateTime createdAt;
 
-  MoodEntryUiModel( {
+  MoodEntryUiModel({
     required this.id,
     required this.time,
     required this.color,
     required this.moodName,
+    required this.createdAt,
   });
 }

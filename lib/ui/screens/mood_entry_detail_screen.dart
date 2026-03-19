@@ -1,16 +1,15 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_sound/public/flutter_sound_player.dart';  // 👈 добавить
-import 'package:mindall/data/local/static/weather_labels.dart';
+import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter_sound/public/flutter_sound_player.dart';
+import 'package:mindall/data/local/static/weather_labels.dart';
 
 import '../../data/local/app_database.dart';
 import '../../data/local/repositories/local_repository.dart';
 import '../../data/local/tables/context_tags.dart';
 import '../../domain/models/health_draft.dart';
 import '../models/mood_entry_ui_model.dart';
-import '../widgets/tag_section.dart';
-import '../screens/health_content.dart';
-import '../widgets/voice_player.dart';  // 👈 добавить
+import '../widgets/voice_player.dart';
 
 class MoodEntryDetailScreen extends StatefulWidget {
   final MoodEntryUiModel entry;
@@ -28,171 +27,136 @@ class MoodEntryDetailScreen extends StatefulWidget {
 
 class _MoodEntryDetailScreenState extends State<MoodEntryDetailScreen> {
   late Future<Map<String, dynamic>> _data;
-  final _player = FlutterSoundPlayer();  // 👈 добавляем
-  bool _isPlayerReady = false;  // 👈 добавляем
+  final _player = FlutterSoundPlayer();
 
   @override
   void initState() {
     super.initState();
     _data = _loadData();
-    _initPlayer();  // 👈 добавляем
+    _initPlayer();
   }
 
-  Future<void> _initPlayer() async {  // 👈 новый метод
+  Future<void> _initPlayer() async {
     try {
       await _player.openPlayer();
-      setState(() {
-        _isPlayerReady = true;
-      });
-    } catch (e) {
-      print('Error initializing player: $e');
-    }
+    } catch (_) {}
   }
 
   @override
-  void dispose() {  // 👈 добавляем dispose
+  void dispose() {
     _player.closePlayer();
     super.dispose();
   }
 
   Future<Map<String, dynamic>> _loadData() async {
     final entryId = int.tryParse(widget.entry.id) ?? 0;
-
     final contextDetails =
-    await widget.repository.getContextDetailsForEntry(entryId);
-
+        await widget.repository.getContextDetailsForEntry(entryId);
     final tags = await widget.repository.getTagsForEntry(entryId);
-
     final weather = await widget.repository.getWeatherForEntry(entryId);
-
-    final health =
-    await widget.repository.getHealthDataForDay(DateTime.now());
+    final entryDate = widget.entry.createdAt;
+    final health = await widget.repository.getHealthDataForDay(
+      DateTime(entryDate.year, entryDate.month, entryDate.day),
+    );
 
     return {
-      "context": contextDetails,
-      "tags": tags,
-      "weather": weather,
-      "health": health,
+      'context': contextDetails,
+      'tags': tags,
+      'weather': weather,
+      'health': health,
     };
   }
 
   @override
   Widget build(BuildContext context) {
-    final moodColor = widget.entry.color;
+    final color = widget.entry.color;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0E1511),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
-          "Запись",
-          style: TextStyle(
-            fontFamily: 'DotGothic',
-            color: Colors.white,
-          ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
         ),
       ),
       body: FutureBuilder<Map<String, dynamic>>(
         future: _data,
         builder: (context, snapshot) {
-
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            );
-          }
-
-          if (snapshot.hasError) {
+          if (!snapshot.hasData) {
             return Center(
-              child: Text(
-                "Ошибка: ${snapshot.error}",
-                style: const TextStyle(color: Colors.red),
-              ),
+              child: CircularProgressIndicator(color: color),
             );
           }
 
           final data = snapshot.data!;
+          final contextDetails = data['context'] as ContextDetail?;
+          final weather = data['weather'] as WeatherDataData?;
+          final health = data['health'] as HealthDataData?;
+          final tags = data['tags'] as List<ContextTag>? ?? [];
 
-          final contextDetails = data["context"] as ContextDetail?;
-          final weather = data["weather"] as WeatherDataData?;
-          final health = data["health"] as HealthDataData?;
-          final tags = data["tags"] as List<ContextTag>? ?? [];
-
-          final placeTags =
-          tags.where((t) => t.type == ContextTagType.place.name).toList();
-
-          final activityTags =
-          tags.where((t) => t.type == ContextTagType.activity.name).toList();
-
-          final socialTags =
-          tags.where((t) => t.type == ContextTagType.social.name).toList();
+          final contextTags = tags
+              .where((t) =>
+                  t.type == ContextTagType.place ||
+                  t.type == ContextTagType.activity ||
+                  t.type == ContextTagType.social)
+              .toList();
 
           return ListView(
-            padding: const EdgeInsets.all(24),
             children: [
+              // ── Шапка ──────────────────────────────────────────────
+              _Header(entry: widget.entry, color: color),
 
-              _header(moodColor),
+              // ── Контент ────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 32, 24, 40),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Теги
+                    if (contextTags.isNotEmpty) ...[
+                      _TagRow(tags: contextTags),
+                      const SizedBox(height: 20),
+                    ],
 
-              const SizedBox(height: 32),
+                    // Заметка
+                    if (contextDetails?.note != null) ...[
+                      _NoteBlock(
+                          note: contextDetails!.note!, color: color),
+                      const SizedBox(height: 20),
+                    ],
 
-              if (placeTags.isNotEmpty)
-                TagSection(
-                  title: "Место",
-                  tags: placeTags,
-                  selectedIds: placeTags.map((t) => t.id).toList(),
-                  onToggle: (_) {},
+                    // Фото
+                    if (contextDetails?.photoPath != null) ...[
+                      _PhotoBlock(rawPath: contextDetails!.photoPath!),
+                      const SizedBox(height: 20),
+                    ],
+
+                    // Голос
+                    if (contextDetails?.voicePath != null &&
+                        contextDetails!.voicePath!.isNotEmpty) ...[
+                      _sectionLabel('ГОЛОСОВАЯ'),
+                      const SizedBox(height: 8),
+                      VoicePlayerWidget(
+                        filePath: contextDetails!.voicePath ?? '',
+                        accentColor: color,
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+
+                    // Погода
+                    if (weather != null) ...[
+                      _WeatherBlock(weather: weather, color: color),
+                      const SizedBox(height: 20),
+                    ],
+
+                    // Здоровье
+                    if (health != null)
+                      _HealthBlock(health: health, color: color),
+                  ],
                 ),
-
-              const SizedBox(height: 24),
-
-              if (activityTags.isNotEmpty)
-                TagSection(
-                  title: "Действие",
-                  tags: activityTags,
-                  selectedIds: activityTags.map((t) => t.id).toList(),
-                  onToggle: (_) {},
-                ),
-
-              const SizedBox(height: 24),
-
-              if (socialTags.isNotEmpty)
-                TagSection(
-                  title: "Общество",
-                  tags: socialTags,
-                  selectedIds: socialTags.map((t) => t.id).toList(),
-                  onToggle: (_) {},
-                ),
-
-              const SizedBox(height: 24),
-
-              if (contextDetails?.note != null)
-                _note(contextDetails!.note!),
-
-              if (contextDetails?.photoPath != null)
-                _photos(contextDetails!.photoPath!),
-
-              // 👇 используем новый виджет для голоса
-              if (contextDetails?.voicePath != null)
-                _voice(contextDetails!.voicePath!, moodColor),
-
-              if (weather != null)
-                _weather(weather),
-
-              if (health != null)
-                HealthContent(
-                  health: HealthDraft(
-                    date: health.date,
-                    sleepMinutes: health.sleepMinutes,
-                    stepsAmount: health.stepsAmount,
-                    cyclePhase: health.cyclePhase,
-                    source: health.source ?? 'manual',
-                  ),
-                  source: health.source ?? 'manual',
-                  moodColor: moodColor,
-                ),
-
-              const SizedBox(height: 60),
+              ),
             ],
           );
         },
@@ -200,39 +164,260 @@ class _MoodEntryDetailScreenState extends State<MoodEntryDetailScreen> {
     );
   }
 
-  Widget _header(Color moodColor) {
+  Widget _sectionLabel(String text) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontFamily: 'DotGothic',
+        color: Colors.white38,
+        fontSize: 11,
+        letterSpacing: 2,
+      ),
+    );
+  }
+}
+
+// ── Шапка ──────────────────────────────────────────────────────────────────
+
+class _Header extends StatelessWidget {
+  final MoodEntryUiModel entry;
+  final Color color;
+
+  const _Header({required this.entry, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: color, width: 2)),
+      ),
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Цветная полоска-акцент сверху
+          Container(width: 48, height: 4, color: color),
+          const SizedBox(height: 20),
+
+          Text(
+            entry.moodName.toUpperCase(),
+            style: TextStyle(
+              fontFamily: 'DotGothic',
+              fontSize: 36,
+              color: color,
+              height: 1.1,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            entry.time,
+            style: const TextStyle(
+              fontFamily: 'DotGothic',
+              color: Colors.white38,
+              fontSize: 14,
+              letterSpacing: 2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Теги ────────────────────────────────────────────────────────────────────
+
+class _TagRow extends StatelessWidget {
+  final List<ContextTag> tags;
+
+  const _TagRow({required this.tags});
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: tags
+          .map((t) => Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white24, width: 1),
+                ),
+                child: Text(
+                  t.name,
+                  style: const TextStyle(
+                    fontFamily: 'DotGothic',
+                    color: Colors.white70,
+                    fontSize: 12,
+                  ),
+                ),
+              ))
+          .toList(),
+    );
+  }
+}
+
+// ── Заметка ─────────────────────────────────────────────────────────────────
+
+class _NoteBlock extends StatelessWidget {
+  final String note;
+  final Color color;
+
+  const _NoteBlock({required this.note, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          "Запись настроения",
+        const Text(
+          'ЗАМЕТКА',
           style: TextStyle(
             fontFamily: 'DotGothic',
-            fontSize: 22,
-            color: moodColor,
+            color: Colors.white38,
+            fontSize: 11,
+            letterSpacing: 2,
           ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          widget.entry.time,
-          style: const TextStyle(
-            fontFamily: 'DotGothic',
-            color: Colors.white70,
-            fontSize: 12,
+        const SizedBox(height: 10),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(width: 3, color: color),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  note,
+                  style: const TextStyle(
+                    fontFamily: 'DotGothic',
+                    color: Colors.white,
+                    fontSize: 14,
+                    height: 1.6,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],
     );
   }
+}
 
-  Widget _note(String note) {
+// ── Фото ────────────────────────────────────────────────────────────────────
+
+class _PhotoBlock extends StatefulWidget {
+  final String rawPath;
+
+  const _PhotoBlock({required this.rawPath});
+
+  @override
+  State<_PhotoBlock> createState() => _PhotoBlockState();
+}
+
+class _PhotoBlockState extends State<_PhotoBlock> {
+  final _controller = PageController();
+  int _current = 0;
+
+  List<String> get _paths {
+    try {
+      final decoded = jsonDecode(widget.rawPath);
+      if (decoded is List) return decoded.cast<String>();
+    } catch (_) {}
+    return [widget.rawPath];
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final paths = _paths.where((p) => File(p).existsSync()).toList();
+    if (paths.isEmpty) return const SizedBox();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          "Заметка",
+          'ФОТО',
           style: TextStyle(
             fontFamily: 'DotGothic',
-            color: Colors.white70,
+            color: Colors.white38,
+            fontSize: 11,
+            letterSpacing: 2,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Stack(
+          children: [
+            SizedBox(
+              height: 260,
+              child: PageView.builder(
+                controller: _controller,
+                itemCount: paths.length,
+                onPageChanged: (i) => setState(() => _current = i),
+                itemBuilder: (_, i) => Image.file(
+                  File(paths[i]),
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                ),
+              ),
+            ),
+            if (paths.length > 1)
+              Positioned(
+                right: 10,
+                bottom: 10,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  color: Colors.black54,
+                  child: Text(
+                    '${_current + 1} / ${paths.length}',
+                    style: const TextStyle(
+                      fontFamily: 'DotGothic',
+                      color: Colors.white,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// ── Погода ──────────────────────────────────────────────────────────────────
+
+class _WeatherBlock extends StatelessWidget {
+  final WeatherDataData weather;
+  final Color color;
+
+  const _WeatherBlock({required this.weather, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final conditions = [
+      weather.cloudiness?.labelRu,
+      weather.precipitation?.labelRu,
+    ].where((s) => s != null && s.isNotEmpty).join(' · ');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'ПОГОДА',
+          style: TextStyle(
+            fontFamily: 'DotGothic',
+            color: Colors.white38,
+            fontSize: 11,
+            letterSpacing: 2,
           ),
         ),
         const SizedBox(height: 10),
@@ -241,95 +426,11 @@ class _MoodEntryDetailScreenState extends State<MoodEntryDetailScreen> {
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: const Color(0xFF18221C),
-            border: Border.all(color: Colors.white, width: 2),
-          ),
-          child: Text(
-            note,
-            style: const TextStyle(
-              fontFamily: 'DotGothic',
-              color: Colors.white,
-            ),
-          ),
-        ),
-        const SizedBox(height: 24),
-      ],
-    );
-  }
-
-  Widget _photos(String path) {
-    final file = File(path);
-
-    if (!file.existsSync()) return const SizedBox();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          "Фото",
-          style: TextStyle(
-            fontFamily: 'DotGothic',
-            color: Colors.white70,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.white, width: 2),
-          ),
-          child: Image.file(file),
-        ),
-        const SizedBox(height: 24),
-      ],
-    );
-  }
-
-  // 👇 ОБНОВЛЕННЫЙ МЕТОД _voice
-  Widget _voice(String path, Color moodColor) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          "Голосовая",
-          style: TextStyle(
-            fontFamily: 'DotGothic',
-            color: Colors.white70,
-          ),
-        ),
-        const SizedBox(height: 10),
-        VoicePlayerWidget(
-          filePath: path,
-          accentColor: moodColor,
-        ),
-        const SizedBox(height: 24),
-      ],
-    );
-  }
-
-  Widget _weather(WeatherDataData weather) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          "Погода",
-          style: TextStyle(
-            fontFamily: 'DotGothic',
-            color: Colors.white70,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFF18221C),
-            border: Border.all(
-              color: Colors.white,
-              width: 2,
-            ),
+            border: Border(left: BorderSide(color: color, width: 3)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
               Text(
                 weather.temperatureCategory.labelRu,
                 style: const TextStyle(
@@ -338,20 +439,148 @@ class _MoodEntryDetailScreenState extends State<MoodEntryDetailScreen> {
                   fontSize: 16,
                 ),
               ),
-
-              const SizedBox(height: 4),
-
-              Text(
-                "${weather.cloudiness?.labelRu ?? ""} ${weather.precipitation?.labelRu ?? ""}",
-                style: const TextStyle(
-                  fontFamily: 'DotGothic',
-                  color: Colors.white70,
+              if (conditions.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  conditions,
+                  style: const TextStyle(
+                    fontFamily: 'DotGothic',
+                    color: Colors.white54,
+                    fontSize: 13,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
-        const SizedBox(height: 24),
+      ],
+    );
+  }
+}
+
+// ── Здоровье ────────────────────────────────────────────────────────────────
+
+class _HealthBlock extends StatelessWidget {
+  final HealthDataData health;
+  final Color color;
+
+  const _HealthBlock({required this.health, required this.color});
+
+  String _formatSleep(int? minutes) {
+    if (minutes == null) return '—';
+    return '${minutes ~/ 60}ч ${minutes % 60}м';
+  }
+
+  String _phaseName(CyclePhase? phase) {
+    switch (phase) {
+      case CyclePhase.menstruation:
+        return 'Менструация';
+      case CyclePhase.follicular:
+        return 'Фолликулярная';
+      case CyclePhase.ovulation:
+        return 'Овуляция';
+      case CyclePhase.luteal:
+        return 'Лютеиновая';
+      case null:
+        return '—';
+    }
+  }
+
+  Widget _metricCard(String label, String value, {double rightMargin = 0}) {
+    return Expanded(
+      child: Container(
+        margin: EdgeInsets.only(right: rightMargin),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF18221C),
+          border: Border(top: BorderSide(color: color, width: 2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontFamily: 'DotGothic',
+                color: Colors.white38,
+                fontSize: 10,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              style: const TextStyle(
+                fontFamily: 'DotGothic',
+                color: Colors.white,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'ЗДОРОВЬЕ',
+          style: TextStyle(
+            fontFamily: 'DotGothic',
+            color: Colors.white38,
+            fontSize: 11,
+            letterSpacing: 2,
+          ),
+        ),
+        const SizedBox(height: 10),
+        // Сон + Шаги в ряд
+        Row(
+          children: [
+            _metricCard('СОН', _formatSleep(health.sleepMinutes),
+                rightMargin: 8),
+            _metricCard('ШАГИ', health.stepsAmount?.toString() ?? '—'),
+          ],
+        ),
+        // Цикл на всю ширину (только если есть)
+        if (health.cyclePhase != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding:
+                const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF18221C),
+              border: Border(top: BorderSide(color: color, width: 2)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'ЦИКЛ',
+                  style: TextStyle(
+                    fontFamily: 'DotGothic',
+                    color: Colors.white38,
+                    fontSize: 10,
+                    letterSpacing: 1,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _phaseName(health.cyclePhase),
+                  style: const TextStyle(
+                    fontFamily: 'DotGothic',
+                    color: Colors.white,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

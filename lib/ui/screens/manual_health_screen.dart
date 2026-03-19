@@ -8,11 +8,15 @@ import '../widgets/tag_section.dart';
 class ManualHealthScreen extends StatefulWidget {
   final Color moodColor;
   final HealthDraft? initialHealth;
+  final bool isFemale;
+  final VoidCallback? onUpdateCycle;
 
   const ManualHealthScreen({
     super.key,
     required this.moodColor,
     this.initialHealth,
+    this.isFemale = false,
+    this.onUpdateCycle,
   });
 
   @override
@@ -192,14 +196,31 @@ class _ManualHealthScreenState extends State<ManualHealthScreen> {
 
                     const SizedBox(height: 32),
 
-                    TagSection(
-                      title: 'Фаза цикла',
-                      tags: _cycleTags,
-                      selectedIds: _selectedCycleId != null
-                          ? [_selectedCycleId!]
-                          : [],
-                      onToggle: _handleCycleToggle,
-                    ),
+                    if (widget.isFemale) ...[
+                      TagSection(
+                        title: 'Фаза цикла',
+                        tags: _cycleTags,
+                        selectedIds: _selectedCycleId != null
+                            ? [_selectedCycleId!]
+                            : [],
+                        onToggle: _handleCycleToggle,
+                      ),
+                      if (widget.onUpdateCycle != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: TextButton(
+                            onPressed: widget.onUpdateCycle,
+                            child: const Text(
+                              'Обновить данные цикла',
+                              style: TextStyle(
+                                fontFamily: 'DotGothic',
+                                color: Colors.white38,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ],
                 ),
               ),
