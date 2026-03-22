@@ -10,6 +10,7 @@ import '../../data/local/tables/context_tags.dart';
 import '../../domain/models/health_draft.dart';
 import '../models/mood_entry_ui_model.dart';
 import '../widgets/voice_player.dart';
+import 'mood_context_screen.dart';
 
 class MoodEntryDetailScreen extends StatefulWidget {
   final MoodEntryUiModel entry;
@@ -67,6 +68,58 @@ class _MoodEntryDetailScreenState extends State<MoodEntryDetailScreen> {
     };
   }
 
+  Future<void> _deleteEntry() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF18221C),
+        title: const Text(
+          'Удалить запись?',
+          style: TextStyle(fontFamily: 'DotGothic', color: Colors.white),
+        ),
+        content: const Text(
+          'Это действие нельзя отменить.',
+          style: TextStyle(fontFamily: 'DotGothic', color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена',
+                style: TextStyle(fontFamily: 'DotGothic', color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Удалить',
+                style: TextStyle(fontFamily: 'DotGothic', color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final entryId = int.tryParse(widget.entry.id) ?? 0;
+      await widget.repository.deleteMoodEntry(entryId);
+      if (mounted) Navigator.pop(context, true);
+    }
+  }
+
+  Future<void> _editEntry() async {
+    final entryId = int.tryParse(widget.entry.id) ?? 0;
+    final draft = await widget.repository.getMoodEntryAsDraft(entryId);
+    if (!mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MoodContextScreen(
+          draft: draft,
+          moodName: widget.entry.moodName,
+          moodColor: widget.entry.color,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final color = widget.entry.color;
@@ -80,6 +133,16 @@ class _MoodEntryDetailScreenState extends State<MoodEntryDetailScreen> {
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, color: Colors.white70),
+            onPressed: _editEntry,
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.white70),
+            onPressed: _deleteEntry,
+          ),
+        ],
       ),
       body: FutureBuilder<Map<String, dynamic>>(
         future: _data,
@@ -139,7 +202,7 @@ class _MoodEntryDetailScreenState extends State<MoodEntryDetailScreen> {
                       _sectionLabel('ГОЛОСОВАЯ'),
                       const SizedBox(height: 8),
                       VoicePlayerWidget(
-                        filePath: contextDetails!.voicePath ?? '',
+                        filePath: contextDetails.voicePath ?? '',
                         accentColor: color,
                       ),
                       const SizedBox(height: 20),

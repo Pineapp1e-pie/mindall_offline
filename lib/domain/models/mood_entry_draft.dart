@@ -3,6 +3,9 @@ import 'health_draft.dart';
 
 
 class MoodEntryDraft {
+  final int? editingEntryId;
+  final DateTime? entryDate;
+
   final int moodId;
 
   final List<int> placeTagIds;
@@ -18,6 +21,8 @@ class MoodEntryDraft {
   final HealthDraft? health;
 
   MoodEntryDraft({
+    this.editingEntryId,
+    this.entryDate,
     required this.moodId,
     this.placeTagIds = const [],
     this.activityTagIds = const [],
@@ -30,6 +35,7 @@ class MoodEntryDraft {
   });
 
   MoodEntryDraft copyWith({
+    int? moodId,
     List<int>? placeTagIds,
     List<int>? activityTagIds,
     List<int>? socialTagIds,
@@ -40,7 +46,9 @@ class MoodEntryDraft {
     final HealthDraft? health,
   }) {
     return MoodEntryDraft(
-      moodId: moodId,
+      editingEntryId: editingEntryId,
+      entryDate: entryDate,
+      moodId: moodId ?? this.moodId,
       placeTagIds: placeTagIds ?? this.placeTagIds,
       activityTagIds: activityTagIds ?? this.activityTagIds,
       socialTagIds: socialTagIds ?? this.socialTagIds,
@@ -49,7 +57,6 @@ class MoodEntryDraft {
       recordPath: recordPath ?? this.recordPath,
       weather: weather ?? this.weather,
       health: health ?? this.health,
-
     );
   }
 }

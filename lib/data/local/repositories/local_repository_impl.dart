@@ -3,8 +3,11 @@ import 'package:drift/drift.dart';
 import 'package:mindall/data/local/tables/health_data.dart';
 
 import '../../../domain/models/mood_entry_with_mood.dart';
+import '../../../domain/models/weather_draft.dart';
+import '../../../domain/models/health_draft.dart';
 import '../app_database.dart';
 import '../tables/context_details.dart';
+import '../tables/context_tags.dart';
 import '../tables/weather_data.dart';
 import 'local_repository.dart';
 import '../../../domain/models/mood_entry_draft.dart';
@@ -60,6 +63,27 @@ class LocalRepositoryImpl implements LocalRepository {
     }).toList();
   }
 
+
+  @override
+  Stream<List<MoodEntryWithMood>> watchMoodEntriesForDay(DateTime day) {
+    final start = DateTime(day.year, day.month, day.day);
+    final end = start.add(const Duration(days: 1));
+
+    final query = db.select(db.moodEntries).join([
+      innerJoin(
+        db.moods,
+        db.moods.id.equalsExp(db.moodEntries.moodId),
+      ),
+    ])
+      ..where(db.moodEntries.createdAt.isBetweenValues(start, end));
+
+    return query.watch().map((rows) => rows.map((row) {
+          return MoodEntryWithMood(
+            entry: row.readTable(db.moodEntries),
+            mood: row.readTable(db.moods),
+          );
+        }).toList());
+  }
 
   @override
   Future<List<MoodEntry>> getMoodEntriesForPeriod(
@@ -233,5 +257,204 @@ class LocalRepositoryImpl implements LocalRepository {
     return await (db.select(db.weatherData)
       ..where((w) => w.moodEntryId.equals(entryId)))
         .getSingleOrNull();
+  }
+
+  @override
+  Future<void> deleteMoodEntry(int entryId) async {
+    await db.transaction(() async {
+      await (db.delete(db.weatherData)
+            ..where((w) => w.moodEntryId.equals(entryId)))
+          .go();
+      await (db.delete(db.moodEntryTags)
+            ..where((t) => t.moodEntryId.equals(entryId)))
+          .go();
+      await (db.delete(db.contextDetails)
+            ..where((c) => c.moodEntryId.equals(entryId)))
+          .go();
+      await (db.delete(db.moodEntries)
+            ..where((e) => e.id.equals(entryId)))
+          .go();
+    });
+  }
+
+  @override
+  Future<MoodEntryDraft> getMoodEntryAsDraft(int entryId) async {
+    final entry = await (db.select(db.moodEntries)
+          ..where((e) => e.id.equals(entryId)))
+        .getSingle();
+
+    final contextDetails = await (db.select(db.contextDetails)
+          ..where((c) => c.moodEntryId.equals(entryId)))
+        .getSingleOrNull();
+
+    final tagQuery = db.select(db.contextTags).join([
+      innerJoin(
+        db.moodEntryTags,
+        db.moodEntryTags.tagId.equalsExp(db.contextTags.id),
+      ),
+    ])
+      ..where(db.moodEntryTags.moodEntryId.equals(entryId));
+    final tagRows = await tagQuery.get();
+    final tags = tagRows.map((r) => r.readTable(db.contextTags)).toList();
+
+    final weather = await (db.select(db.weatherData)
+          ..where((w) => w.moodEntryId.equals(entryId)))
+        .getSingleOrNull();
+
+    final d = entry.createdAt;
+    final health = await (db.select(db.healthData)
+          ..where((h) => h.date.equals(DateTime(d.year, d.month, d.day))))
+        .getSingleOrNull();
+
+    List<String> imagePaths = [];
+    if (contextDetails?.photoPath != null) {
+      try {
+        final decoded = jsonDecode(contextDetails!.photoPath!);
+        if (decoded is List) imagePaths = decoded.cast<String>();
+      } catch (_) {
+        imagePaths = [contextDetails!.photoPath!];
+      }
+    }
+
+    return MoodEntryDraft(
+      editingEntryId: entryId,
+      entryDate: entry.createdAt,
+      moodId: entry.moodId,
+      placeTagIds: tags
+          .where((t) => t.type == ContextTagType.place)
+          .map((t) => t.id)
+          .toList(),
+      activityTagIds: tags
+          .where((t) => t.type == ContextTagType.activity)
+          .map((t) => t.id)
+          .toList(),
+      socialTagIds: tags
+          .where((t) => t.type == ContextTagType.social)
+          .map((t) => t.id)
+          .toList(),
+      note: contextDetails?.note ?? '',
+      imagePaths: imagePaths,
+      recordPath: contextDetails?.voicePath ?? '',
+      weather: weather != null
+          ? WeatherDraft(
+              source: weather.source,
+              temperature: weather.temperatureCategory,
+              precipitation: weather.precipitation,
+              cloudiness: weather.cloudiness,
+            )
+          : null,
+      health: health != null
+          ? HealthDraft(
+              date: health.date,
+              sleepMinutes: health.sleepMinutes,
+              stepsAmount: health.stepsAmount,
+              cyclePhase: health.cyclePhase,
+              source: health.source ?? 'manual',
+            )
+          : null,
+    );
+  }
+
+  @override
+  Future<void> updateFullEntry(int entryId, MoodEntryDraft draft) async {
+    await db.transaction(() async {
+      // 1. Update mood
+      await (db.update(db.moodEntries)..where((e) => e.id.equals(entryId)))
+          .write(MoodEntriesCompanion(moodId: Value(draft.moodId)));
+
+      // 2. Update context details
+      final existing = await (db.select(db.contextDetails)
+            ..where((c) => c.moodEntryId.equals(entryId)))
+          .getSingleOrNull();
+      final contextCompanion = ContextDetailsCompanion(
+        note: Value(draft.note.isEmpty ? null : draft.note),
+        voicePath:
+            Value(draft.recordPath.isEmpty ? null : draft.recordPath),
+        photoPath: Value(
+          draft.imagePaths.isNotEmpty
+              ? jsonEncode(draft.imagePaths)
+              : null,
+        ),
+      );
+      if (existing != null) {
+        await (db.update(db.contextDetails)
+              ..where((c) => c.moodEntryId.equals(entryId)))
+            .write(contextCompanion);
+      } else {
+        await db.into(db.contextDetails).insert(
+          ContextDetailsCompanion.insert(
+            moodEntryId: entryId,
+            note: contextCompanion.note,
+            voicePath: contextCompanion.voicePath,
+            photoPath: contextCompanion.photoPath,
+          ),
+        );
+      }
+
+      // 3. Tags — delete and re-insert
+      await (db.delete(db.moodEntryTags)
+            ..where((t) => t.moodEntryId.equals(entryId)))
+          .go();
+      for (final tagId in [
+        ...draft.placeTagIds,
+        ...draft.activityTagIds,
+        ...draft.socialTagIds,
+      ]) {
+        await db.into(db.moodEntryTags).insert(
+          MoodEntryTagsCompanion.insert(
+              moodEntryId: entryId, tagId: tagId),
+        );
+      }
+
+      // 4. Weather — delete and re-insert
+      await (db.delete(db.weatherData)
+            ..where((w) => w.moodEntryId.equals(entryId)))
+          .go();
+      if (draft.weather != null) {
+        await db.into(db.weatherData).insert(
+          WeatherDataCompanion.insert(
+            moodEntryId: entryId,
+            source: draft.weather!.source,
+            temperatureCategory: draft.weather!.temperature!,
+            precipitation: Value(draft.weather!.precipitation),
+            cloudiness: Value(draft.weather!.cloudiness),
+          ),
+        );
+      }
+
+      // 5. Health — upsert
+      if (draft.health != null) {
+        await db.into(db.healthData).insert(
+          HealthDataCompanion.insert(
+            date: draft.health!.date,
+            sleepMinutes: Value(draft.health!.sleepMinutes),
+            stepsAmount: Value(draft.health!.stepsAmount),
+            cyclePhase: Value(draft.health!.cyclePhase),
+            source: Value(draft.health!.source),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+      }
+    });
+  }
+
+  @override
+  Future<void> updateNote(int entryId, String? note) async {
+    final existing = await (db.select(db.contextDetails)
+          ..where((c) => c.moodEntryId.equals(entryId)))
+        .getSingleOrNull();
+
+    if (existing != null) {
+      await (db.update(db.contextDetails)
+            ..where((c) => c.moodEntryId.equals(entryId)))
+          .write(ContextDetailsCompanion(note: Value(note)));
+    } else {
+      await db.into(db.contextDetails).insert(
+        ContextDetailsCompanion.insert(
+          moodEntryId: entryId,
+          note: Value(note),
+        ),
+      );
+    }
   }
 }

@@ -50,8 +50,7 @@ class MoodCategoryScreen extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) =>
-                            MoodMatrixScreen(category: category,),
+                        builder: (_) => MoodMatrixScreen(category: category),
                       ),
                     );
                   },

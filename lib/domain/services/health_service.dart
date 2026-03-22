@@ -121,19 +121,20 @@ class HealthService {
     }
   }
 
-  Future<int?> getStepAmount() async {
+  Future<int?> getStepAmount({DateTime? date}) async {
     print('🟡 HealthService: getStepAmount() started');
 
     try {
-      final now = DateTime.now();
-      final start = DateTime(now.year, now.month, now.day);
+      final target = date ?? DateTime.now();
+      final start = DateTime(target.year, target.month, target.day);
+      final end = start.add(const Duration(days: 1));
 
-      print('🟡 Fetching steps from $start to $now');
+      print('🟡 Fetching steps from $start to $end');
 
       final data = await _health.getHealthDataFromTypes(
         types: [HealthDataType.STEPS],
         startTime: start,
-        endTime: now,
+        endTime: end,
       );
 
       print('✅ Received ${data.length} step entries');
@@ -158,19 +159,21 @@ class HealthService {
     }
   }
 
-  Future<int?> getSleepMinutes() async {
+  Future<int?> getSleepMinutes({DateTime? date}) async {
     print('🟡 HealthService: getSleepMinutes() started');
 
     try {
-      final now = DateTime.now();
-      final start = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 1));
+      final target = date ?? DateTime.now();
+      final dayMidnight = DateTime(target.year, target.month, target.day);
+      final start = dayMidnight.subtract(const Duration(days: 1));
+      final end = dayMidnight.add(const Duration(days: 1));
 
-      print('🟡 Fetching sleep from $start to $now');
+      print('🟡 Fetching sleep from $start to $end');
 
       final data = await _health.getHealthDataFromTypes(
         types: [HealthDataType.SLEEP_SESSION],
         startTime: start,
-        endTime: now,
+        endTime: end,
       );
 
       print('✅ Received ${data.length} sleep entries');
@@ -180,9 +183,8 @@ class HealthService {
         return null;
       }
 
-      // Берём только сессии, закончившиеся сегодня (последняя ночь)
-      final todayMidnight = DateTime(now.year, now.month, now.day);
-      final todaySessions = data.where((item) => item.dateTo.isAfter(todayMidnight)).toList();
+      // Берём только сессии, закончившиеся в нужный день
+      final todaySessions = data.where((item) => item.dateTo.isAfter(dayMidnight)).toList();
 
       if (todaySessions.isEmpty) {
         print('ℹ️ No sleep data for today');

@@ -280,7 +280,7 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
                                 });
                               },
                               maxLines: 6,
-                              cursorColor: Colors.white,
+                              cursorColor: widget.moodColor,
                               style: const TextStyle(
                                 fontFamily: 'DotGothic',
                                 fontSize: 14,

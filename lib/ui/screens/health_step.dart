@@ -52,7 +52,11 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
     // 👇 Получаем репозиторий один раз при инициализации
     _repository = context.read<LocalRepository>();
 
-    _loadTodayHealth();
+    if (_draft.editingEntryId == null) {
+      _loadTodayHealth();
+    } else {
+      _isLoadingExisting = false;
+    }
     _loadProfile();
   }
 
@@ -196,21 +200,21 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
     try {
       final granted = await _healthService.requestPermissions();
       if (!granted) {
-        _showError("Нет доступа к данным здоровья");
+        _showError("Нет доступа к данным здоровья.\nПодключите Health Connect.");
         return;
       }
 
-      final sleep = await _healthService.getSleepMinutes();
-      final steps = await _healthService.getStepAmount();
+      final target = _draft.entryDate ?? DateTime.now();
 
-      final now = DateTime.now();
+      final sleep = await _healthService.getSleepMinutes(date: target);
+      final steps = await _healthService.getStepAmount(date: target);
       final cycleSettings = _userProfile?.cycleSettings;
       final cyclePhase = cycleSettings != null
           ? CycleCalculator.calculate(cycleSettings)
           : _draft.health?.cyclePhase;
 
       final health = HealthDraft(
-        date: DateTime(now.year, now.month, now.day),
+        date: DateTime(target.year, target.month, target.day),
         sleepMinutes: sleep,
         stepsAmount: steps,
         cyclePhase: cyclePhase,
@@ -252,7 +256,11 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
     setState(() => _loading = true);
 
     try {
-      await _repository.saveFullEntry(_draft);
+      if (_draft.editingEntryId != null) {
+        await _repository.updateFullEntry(_draft.editingEntryId!, _draft);
+      } else {
+        await _repository.saveFullEntry(_draft);
+      }
 
       if (!mounted) return;
 
@@ -329,10 +337,10 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
                             child: TextButton(
                               onPressed: _navigateToManualInput,
                               child: const Text(
-                                "Записать самостоятельно",
+                                "Записать самостоятельно/редактировать",
                                 style: TextStyle(
                                   fontFamily: 'DotGothic',
-                                  color: Colors.white70,
+                                  color: Colors.white,
                                 ),
                               ),
                             ),

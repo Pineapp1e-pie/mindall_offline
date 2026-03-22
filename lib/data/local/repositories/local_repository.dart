@@ -11,6 +11,8 @@ abstract class LocalRepository {
 
   Future<List<MoodEntryWithMood>> getMoodEntriesForDay(DateTime day);
 
+  Stream<List<MoodEntryWithMood>> watchMoodEntriesForDay(DateTime day);
+
   Future<void> saveFullEntry(MoodEntryDraft draft);
 
   Future<List<MoodEntry>> getMoodEntriesForPeriod(
@@ -46,6 +48,13 @@ abstract class LocalRepository {
   Future<WeatherDataData?> getWeatherForEntry(int entryId);
   Future<List<ContextTag>> getTagsForEntry(int entryId);
 
+  Future<void> deleteMoodEntry(int entryId);
+
+  Future<void> updateNote(int entryId, String? note);
+
+  Future<MoodEntryDraft> getMoodEntryAsDraft(int entryId);
+
+  Future<void> updateFullEntry(int entryId, MoodEntryDraft draft);
 }
 
 

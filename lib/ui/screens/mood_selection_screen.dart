@@ -280,7 +280,6 @@ class MoodMatrixScreen extends StatefulWidget {
   const MoodMatrixScreen({
     super.key,
     required this.category,
-
   });
 
   @override
@@ -385,9 +384,7 @@ class _MoodMatrixScreenState extends State<MoodMatrixScreen> {
                       onTap: _selectedMood == null
                           ? null
                           : () {
-                        final draft = MoodEntryDraft(
-                          moodId: _selectedMood!.id,
-                        );
+                        final draft = MoodEntryDraft(moodId: _selectedMood!.id);
                         Navigator.push(
                           context,
                           MaterialPageRoute(

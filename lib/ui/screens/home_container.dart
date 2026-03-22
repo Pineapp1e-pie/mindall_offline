@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../data/local/app_database.dart';
-import '../../data/local/repositories/local_repository_impl.dart';
+import 'package:provider/provider.dart';
+import '../../data/local/repositories/local_repository.dart';
 import '../../domain/models/mood_entry_with_mood.dart';
 import '../models/mood_entry_ui_model.dart';
 import 'home_screen.dart';
@@ -14,32 +14,28 @@ class HomeContainer extends StatefulWidget {
 }
 
 class _HomeContainerState extends State<HomeContainer> {
-
-  late Future<List<MoodEntryWithMood>> _future;
   DateTime _selectedDate = DateTime.now();
+  late Stream<List<MoodEntryWithMood>> _stream;
+  bool _streamInitialized = false;
 
-  final db = AppDatabase();
-  late final repo = LocalRepositoryImpl(db);
+  DateTime get _day =>
+      DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
 
   @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  void _load() {
-    final date = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
-    _future = repo.getMoodEntriesForDay(date);
-  }
-
-  void refresh() {
-    setState(() => _load());
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_streamInitialized) {
+      _stream = context.read<LocalRepository>().watchMoodEntriesForDay(_day);
+      _streamInitialized = true;
+    }
   }
 
   void _onDateChanged(DateTime date) {
     setState(() {
       _selectedDate = date;
-      _load();
+      _stream = context.read<LocalRepository>().watchMoodEntriesForDay(
+            DateTime(date.year, date.month, date.day),
+          );
     });
   }
 
@@ -52,8 +48,8 @@ class _HomeContainerState extends State<HomeContainer> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<MoodEntryWithMood>>(
-      future: _future,
+    return StreamBuilder<List<MoodEntryWithMood>>(
+      stream: _stream,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Scaffold(

@@ -109,12 +109,6 @@ class _ManualHealthScreenState extends State<ManualHealthScreen> {
     );
   }
 
-  bool get _isComplete =>
-      _sleepHoursController.text.isNotEmpty ||
-          _sleepMinutesController.text.isNotEmpty ||
-          _activityController.text.isNotEmpty ||
-          _selectedCycleId != null;
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -159,8 +153,11 @@ class _ManualHealthScreenState extends State<ManualHealthScreen> {
                           child: TextField(
                             controller: _sleepHoursController,
                             keyboardType: TextInputType.number,
+                            style: const TextStyle(color: Colors.white),
+                            cursorColor: widget.moodColor,
                             decoration: const InputDecoration(
                               hintText: "Часы",
+                              hintStyle: TextStyle(color: Colors.white38),
                             ),
                           ),
                         ),
@@ -169,8 +166,11 @@ class _ManualHealthScreenState extends State<ManualHealthScreen> {
                           child: TextField(
                             controller: _sleepMinutesController,
                             keyboardType: TextInputType.number,
+                            style: const TextStyle(color: Colors.white),
+                            cursorColor: widget.moodColor,
                             decoration: const InputDecoration(
                               hintText: "Минуты",
+                              hintStyle: TextStyle(color: Colors.white38),
                             ),
                           ),
                         ),
@@ -180,7 +180,7 @@ class _ManualHealthScreenState extends State<ManualHealthScreen> {
                     const SizedBox(height: 32),
 
                     const Text(
-                      'Активность (минуты)',
+                      'Шаги',
                       style: TextStyle(
                         color: Colors.white70,
                         fontFamily: 'DotGothic',
@@ -192,6 +192,8 @@ class _ManualHealthScreenState extends State<ManualHealthScreen> {
                     TextField(
                       controller: _activityController,
                       keyboardType: TextInputType.number,
+                      style: const TextStyle(color: Colors.white),
+                      cursorColor: widget.moodColor,
                     ),
 
                     const SizedBox(height: 32),
@@ -232,12 +234,10 @@ class _ManualHealthScreenState extends State<ManualHealthScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: _isComplete
-                      ? () {
+                  onPressed: () {
                     final draft = _buildDraft();
                     Navigator.pop(context, draft);
-                  }
-                      : null,
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: widget.moodColor,
                     shape: const RoundedRectangleBorder(
