@@ -224,6 +224,7 @@ class LocalRepositoryImpl implements LocalRepository {
             temperatureCategory: draft.weather!.temperature!,
             precipitation: Value(draft.weather!.precipitation),
             cloudiness: Value(draft.weather!.cloudiness),
+            rawTemperature: Value(draft.weather!.rawTemperature),
           ),
         );
       }
@@ -257,6 +258,59 @@ class LocalRepositoryImpl implements LocalRepository {
     return await (db.select(db.weatherData)
       ..where((w) => w.moodEntryId.equals(entryId)))
         .getSingleOrNull();
+  }
+
+  @override
+  Future<List<MoodWeatherRecord>> getMoodWeatherPairs(
+      DateTime from, DateTime to) async {
+    final query = db.select(db.moodEntries).join([
+      innerJoin(db.moods, db.moods.id.equalsExp(db.moodEntries.moodId)),
+      innerJoin(
+          db.weatherData,
+          db.weatherData.moodEntryId.equalsExp(db.moodEntries.id)),
+    ])
+      ..where(db.moodEntries.createdAt.isBetweenValues(from, to));
+
+    final rows = await query.get();
+    return rows.map((row) {
+      final mood = row.readTable(db.moods);
+      final weather = row.readTable(db.weatherData);
+      return MoodWeatherRecord(
+        moodY: mood.y,
+        moodName: mood.name,
+        temperatureCategory: weather.temperatureCategory,
+        rawTemperature: weather.rawTemperature,
+      );
+    }).toList();
+  }
+
+  @override
+  Future<List<HealthDataData>> getHealthDataForPeriod(
+      DateTime from, DateTime to) {
+    final start = DateTime(from.year, from.month, from.day);
+    final end = DateTime(to.year, to.month, to.day);
+    return (db.select(db.healthData)
+          ..where((h) =>
+              h.date.isBiggerOrEqualValue(start) &
+              h.date.isSmallerOrEqualValue(end))
+          ..orderBy([(h) => OrderingTerm(expression: h.date)]))
+        .get();
+  }
+
+  @override
+  Future<List<MoodEntryWithMood>> getMoodEntriesWithMoodForPeriod(
+      DateTime from, DateTime to) async {
+    final query = db.select(db.moodEntries).join([
+      innerJoin(db.moods, db.moods.id.equalsExp(db.moodEntries.moodId)),
+    ])
+      ..where(db.moodEntries.createdAt.isBetweenValues(from, to))
+      ..orderBy([OrderingTerm(expression: db.moodEntries.createdAt)]);
+
+    final rows = await query.get();
+    return rows.map((row) => MoodEntryWithMood(
+          entry: row.readTable(db.moodEntries),
+          mood: row.readTable(db.moods),
+        )).toList();
   }
 
   @override
@@ -418,6 +472,7 @@ class LocalRepositoryImpl implements LocalRepository {
             temperatureCategory: draft.weather!.temperature!,
             precipitation: Value(draft.weather!.precipitation),
             cloudiness: Value(draft.weather!.cloudiness),
+            rawTemperature: Value(draft.weather!.rawTemperature),
           ),
         );
       }

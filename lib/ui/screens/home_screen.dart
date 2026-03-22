@@ -8,6 +8,7 @@ import 'mood_category_screen.dart';
 import 'package:pixelarticons/pixelarticons.dart';
 
 import 'mood_entry_detail_screen.dart';
+import 'analytics_screen.dart';
 
 import 'package:provider/provider.dart';
 
@@ -315,7 +316,12 @@ class _BottomMenu extends StatelessWidget {
           _BottomIcon(
             icon: Pixel.chart,
             onTap: () {
-              // аналитика
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const AnalyticsScreen(),
+                ),
+              );
             },
           ),
         ],

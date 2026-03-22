@@ -10,6 +10,7 @@ import '../../domain/models/user_profile.dart';
 import '../../domain/services/health_service.dart';
 import '../../domain/services/user_profile_service.dart';
 import '../../domain/services/cycle_calculator.dart';
+import '../../domain/services/daily_mood_analyzer.dart';
 import '../widgets/step_indicator.dart';
 import '../widgets/bottom_button.dart';
 
@@ -256,11 +257,15 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
     setState(() => _loading = true);
 
     try {
+      final entryDate = _draft.entryDate ?? DateTime.now();
+
       if (_draft.editingEntryId != null) {
         await _repository.updateFullEntry(_draft.editingEntryId!, _draft);
       } else {
         await _repository.saveFullEntry(_draft);
       }
+
+      await DailyMoodAnalyzer(_repository).analyzeDay(entryDate);
 
       if (!mounted) return;
 

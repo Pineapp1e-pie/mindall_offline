@@ -5,6 +5,20 @@ import '../tables/health_data.dart';
 import '../../../domain/models/mood_entry_draft.dart';
 import '../tables/weather_data.dart';
 
+class MoodWeatherRecord {
+  final double moodY;
+  final String moodName;
+  final TemperatureCategory temperatureCategory;
+  final double? rawTemperature;
+
+  const MoodWeatherRecord({
+    required this.moodY,
+    required this.moodName,
+    required this.temperatureCategory,
+    this.rawTemperature,
+  });
+}
+
 abstract class LocalRepository {
   /// --- Mood entries ---
   Future<int> insertMoodEntry(MoodEntriesCompanion entry);
@@ -47,6 +61,12 @@ abstract class LocalRepository {
   Future<ContextDetail?> getContextDetailsForEntry(int entryId);
   Future<WeatherDataData?> getWeatherForEntry(int entryId);
   Future<List<ContextTag>> getTagsForEntry(int entryId);
+
+  Future<List<MoodWeatherRecord>> getMoodWeatherPairs(DateTime from, DateTime to);
+
+  Future<List<HealthDataData>> getHealthDataForPeriod(DateTime from, DateTime to);
+
+  Future<List<MoodEntryWithMood>> getMoodEntriesWithMoodForPeriod(DateTime from, DateTime to);
 
   Future<void> deleteMoodEntry(int entryId);
 

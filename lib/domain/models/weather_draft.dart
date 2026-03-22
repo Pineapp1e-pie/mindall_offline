@@ -6,12 +6,14 @@ class WeatherDraft {
   final TemperatureCategory? temperature;
   final PrecipitationType? precipitation;
   final String source; // auto | manual
+  final double? rawTemperature; // °C, только для auto
 
   WeatherDraft({
     this.cloudiness,
     this.temperature,
     this.precipitation,
     required this.source,
+    this.rawTemperature,
   });
 
 //   WeatherDraft copyWith({

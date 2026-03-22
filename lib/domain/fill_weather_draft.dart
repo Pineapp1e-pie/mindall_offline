@@ -20,6 +20,7 @@ Future<MoodEntryDraft> fillWeatherDraft({
     temperature: mapTemperature(api.temperature),
     precipitation: mapPrecipitation(api.condition),
     source: 'auto',
+    rawTemperature: api.temperature,
   );
 
   return draft.copyWith(weather: weatherDraft);
