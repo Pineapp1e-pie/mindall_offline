@@ -98,7 +98,7 @@ class _ManualHealthScreenState extends State<ManualHealthScreen> {
     }
 
     final now = DateTime.now();
-    final date = DateTime(now.year, now.month, now.day);
+    final date = widget.initialHealth?.date ?? DateTime(now.year, now.month, now.day);
 
     return HealthDraft(
       date: date,

@@ -1,6 +1,8 @@
 import '../../data/local/repositories/local_repository.dart';
+import '../../data/local/static/moods.dart';
 import '../../data/local/tables/weather_data.dart';
 import '../../domain/models/health_draft.dart';
+import '../../domain/models/mood_entry_with_mood.dart';
 import '../models/chart_models.dart';
 
 class AnalyticsService {
@@ -163,4 +165,104 @@ class AnalyticsService {
         CyclePhase.ovulation => 2,
         CyclePhase.luteal => 3,
       };
+
+  // ------------------------------
+  // КВАДРАНТЫ: количество записей по категориям за период
+  // ------------------------------
+
+  Future<Map<MoodCategory, int>> getQuadrantStats(
+    DateTime from,
+    DateTime to,
+  ) async {
+    final entries = await repository.getMoodEntriesWithMoodForPeriod(from, to);
+    final counts = {
+      MoodCategory.negativeActive: 0,
+      MoodCategory.positiveActive: 0,
+      MoodCategory.negativeCalm: 0,
+      MoodCategory.positiveCalm: 0,
+    };
+    for (final e in entries) {
+      counts[e.mood.category] = (counts[e.mood.category] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  // ------------------------------
+  // ДЕНЬ-СТАТ: тип дня + среднее настроение (для недели/месяца)
+  // ------------------------------
+
+  Future<List<DayStats>> getDayStatsList(DateTime from, DateTime to) async {
+    final entries = await repository.getMoodEntriesWithMoodForPeriod(from, to);
+
+    final Map<DateTime, List<MoodEntryWithMood>> byDay = {};
+    for (final e in entries) {
+      final d = e.entry.createdAt;
+      final day = DateTime(d.year, d.month, d.day);
+      byDay.putIfAbsent(day, () => []).add(e);
+    }
+
+    final result = byDay.entries.map((entry) {
+      final dayEntries = entry.value;
+      final avgMood =
+          dayEntries.map((e) => e.mood.y).reduce((a, b) => a + b) /
+          dayEntries.length;
+      return DayStats(entry.key, avgMood, _calcDayType(dayEntries));
+    }).toList();
+
+    result.sort((a, b) => a.date.compareTo(b.date));
+    return result;
+  }
+
+  DayType _calcDayType(List<MoodEntryWithMood> entries) {
+    if (entries.length <= 1) return DayType.stable;
+    final cats = entries.map((e) => e.mood.category).toSet();
+    if (cats.length == 1) return DayType.stable;
+    final allPositive = cats.every(
+      (c) =>
+          c == MoodCategory.positiveActive || c == MoodCategory.positiveCalm,
+    );
+    final allNegative = cats.every(
+      (c) =>
+          c == MoodCategory.negativeActive || c == MoodCategory.negativeCalm,
+    );
+    if (allPositive || allNegative) return DayType.balanced;
+    return DayType.contrast;
+  }
+
+  // ------------------------------
+  // ГОД: квадранты по месяцам (для годового графика)
+  // ------------------------------
+
+  Future<List<MonthQuadrantData>> getYearQuadrantStats(int year) async {
+    final entries = await repository.getMoodEntriesWithMoodForPeriod(
+      DateTime(year, 1, 1),
+      DateTime(year, 12, 31, 23, 59, 59),
+    );
+
+    final byMonth = List.generate(
+      12,
+      (_) => {
+        MoodCategory.negativeActive: 0,
+        MoodCategory.positiveActive: 0,
+        MoodCategory.negativeCalm: 0,
+        MoodCategory.positiveCalm: 0,
+      },
+    );
+
+    for (final e in entries) {
+      final m = e.entry.createdAt.month - 1;
+      byMonth[m][e.mood.category] = (byMonth[m][e.mood.category] ?? 0) + 1;
+    }
+
+    return List.generate(12, (i) {
+      final counts = byMonth[i];
+      return MonthQuadrantData(
+        DateTime(year, i + 1, 1),
+        negativeActive: counts[MoodCategory.negativeActive]!,
+        positiveActive: counts[MoodCategory.positiveActive]!,
+        negativeCalm: counts[MoodCategory.negativeCalm]!,
+        positiveCalm: counts[MoodCategory.positiveCalm]!,
+      );
+    });
+  }
 }

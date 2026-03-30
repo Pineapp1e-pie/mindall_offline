@@ -1,5 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/local/repositories/local_repository.dart';
@@ -22,6 +23,7 @@ enum _Period { week, month, year }
 
 class _CorrelationScreenState extends State<CorrelationScreen> {
   _Period _period = _Period.week;
+  DateTime _anchor = DateTime.now();
   late AnalyticsService _service;
   late Future<List<ScatterPoint>> _future;
   bool _initialized = false;
@@ -37,15 +39,71 @@ class _CorrelationScreenState extends State<CorrelationScreen> {
   }
 
   DateTimeRange get _range {
+    final d = _anchor;
+    return switch (_period) {
+      _Period.week => () {
+          final monday = d.subtract(Duration(days: d.weekday - 1));
+          final start = DateTime(monday.year, monday.month, monday.day);
+          final end = start.add(
+              const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
+          return DateTimeRange(start: start, end: end);
+        }(),
+      _Period.month => DateTimeRange(
+          start: DateTime(d.year, d.month, 1),
+          end: DateTime(d.year, d.month + 1, 0, 23, 59, 59),
+        ),
+      _Period.year => DateTimeRange(
+          start: DateTime(d.year, 1, 1),
+          end: DateTime(d.year, 12, 31, 23, 59, 59),
+        ),
+    };
+  }
+
+  bool get _canGoNext {
     final now = DateTime.now();
     return switch (_period) {
-      _Period.week =>
-        DateTimeRange(start: now.subtract(const Duration(days: 7)), end: now),
+      _Period.week => _range.end.isBefore(now),
       _Period.month =>
-        DateTimeRange(start: DateTime(now.year, now.month - 1, now.day), end: now),
-      _Period.year =>
-        DateTimeRange(start: DateTime(now.year - 1, now.month, now.day), end: now),
+        _anchor.year < now.year ||
+            (_anchor.year == now.year && _anchor.month < now.month),
+      _Period.year => _anchor.year < now.year,
     };
+  }
+
+  String get _rangeLabel {
+    final d = _anchor;
+    return switch (_period) {
+      _Period.week => () {
+          final monday = d.subtract(Duration(days: d.weekday - 1));
+          final sunday = monday.add(const Duration(days: 6));
+          final fmt = DateFormat('d MMM', 'ru');
+          return '${fmt.format(monday)} – ${fmt.format(sunday)}';
+        }(),
+      _Period.month =>
+        DateFormat('MMMM yyyy', 'ru').format(DateTime(d.year, d.month)),
+      _Period.year => '${d.year}',
+    };
+  }
+
+  void _goPrev() => setState(() {
+        _anchor = switch (_period) {
+          _Period.week => _anchor.subtract(const Duration(days: 7)),
+          _Period.month => DateTime(_anchor.year, _anchor.month - 1, 1),
+          _Period.year => DateTime(_anchor.year - 1, 1, 1),
+        };
+        _future = _load();
+      });
+
+  void _goNext() {
+    if (!_canGoNext) return;
+    setState(() {
+      _anchor = switch (_period) {
+        _Period.week => _anchor.add(const Duration(days: 7)),
+        _Period.month => DateTime(_anchor.year, _anchor.month + 1, 1),
+        _Period.year => DateTime(_anchor.year + 1, 1, 1),
+      };
+      _future = _load();
+    });
   }
 
   Future<List<ScatterPoint>> _load() {
@@ -61,6 +119,7 @@ class _CorrelationScreenState extends State<CorrelationScreen> {
   void _setPeriod(_Period p) {
     setState(() {
       _period = p;
+      _anchor = DateTime.now();
       _future = _load();
     });
   }
@@ -73,9 +132,9 @@ class _CorrelationScreenState extends State<CorrelationScreen> {
       };
 
   String get _xLabel => switch (widget.type) {
-        CorrelationType.sleep => 'ч сна',
-        CorrelationType.activity => 'шагов',
-        CorrelationType.weather => '°C',
+        CorrelationType.sleep => 'ч',
+        CorrelationType.activity => '',
+        CorrelationType.weather => '°',
         CorrelationType.cycle => 'настроение',
       };
 
@@ -115,7 +174,36 @@ class _CorrelationScreenState extends State<CorrelationScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: _PeriodSelector(selected: _period, onChanged: _setPeriod),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: _goPrev,
+                    child: const Icon(Icons.chevron_left,
+                        color: Colors.white54, size: 20),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _rangeLabel,
+                    style: const TextStyle(
+                      fontFamily: 'DotGothic',
+                      fontSize: 13,
+                      color: Colors.white70,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: _canGoNext ? _goNext : null,
+                    child: Icon(Icons.chevron_right,
+                        color: _canGoNext ? Colors.white54 : Colors.white12,
+                        size: 20),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             Expanded(
               child: FutureBuilder<List<ScatterPoint>>(
                 future: _future,
@@ -155,8 +243,6 @@ class _CorrelationScreenState extends State<CorrelationScreen> {
                               ? _CycleScatter(points: points)
                               : _Scatter(points: points, xLabel: _xLabel),
                         ),
-                        const SizedBox(height: 16),
-                        _AxisLabels(type: widget.type),
                       ],
                     ),
                   );
@@ -252,15 +338,22 @@ FlGridData _grid() => FlGridData(
       ),
     );
 
-class _Scatter extends StatelessWidget {
+class _Scatter extends StatefulWidget {
   final List<ScatterPoint> points;
   final String xLabel;
 
   const _Scatter({required this.points, required this.xLabel});
 
   @override
+  State<_Scatter> createState() => _ScatterState();
+}
+
+class _ScatterState extends State<_Scatter> {
+  int? _selectedIndex;
+
+  @override
   Widget build(BuildContext context) {
-    final scatterSpots = points
+    final scatterSpots = widget.points
         .map((p) => ScatterSpot(
               p.x,
               p.y.clamp(-1.0, 1.0),
@@ -273,10 +366,11 @@ class _Scatter extends StatelessWidget {
             ))
         .toList();
 
-    final xs = points.map((p) => p.x);
+    final xs = widget.points.map((p) => p.x);
     final minX = xs.reduce((a, b) => a < b ? a : b);
     final maxX = xs.reduce((a, b) => a > b ? a : b);
     final pad = (maxX - minX).abs() < 0.01 ? 1.0 : (maxX - minX) * 0.12;
+    final xLabel = widget.xLabel;
 
     return ScatterChart(
       ScatterChartData(
@@ -286,6 +380,8 @@ class _Scatter extends StatelessWidget {
         maxY: 1.15,
         gridData: _grid(),
         borderData: FlBorderData(show: false),
+        showingTooltipIndicators:
+            _selectedIndex != null ? [_selectedIndex!] : [],
         titlesData: FlTitlesData(
           leftTitles:
               const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -296,29 +392,53 @@ class _Scatter extends StatelessWidget {
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
+              reservedSize: 48,
               getTitlesWidget: (val, meta) {
                 if (val == meta.min || val == meta.max) {
                   return const SizedBox.shrink();
                 }
-                final label =
-                    val.abs() < 10 ? val.toStringAsFixed(1) : val.toInt().toString();
-                return Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    '$label $xLabel',
-                    style: const TextStyle(
-                      color: Colors.white38,
-                      fontSize: 9,
-                      fontFamily: 'DotGothic',
-                    ),
-                  ),
+                final num = val.abs() < 10
+                    ? val.toStringAsFixed(1)
+                    : val.toInt().toString();
+                final label = xLabel.isEmpty ? num : '$num$xLabel';
+                return Transform.rotate(
+                  angle: -0.6,
+                  child: Text(label,
+                      style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                          fontFamily: 'DotGothic')),
                 );
               },
             ),
           ),
         ),
         scatterSpots: scatterSpots,
-        scatterTouchData: ScatterTouchData(enabled: false),
+        scatterTouchData: ScatterTouchData(
+          enabled: true,
+          handleBuiltInTouches: false,
+          touchSpotThreshold: 24,
+          touchTooltipData: ScatterTouchTooltipData(
+            getTooltipColor: (_) => const Color(0xFF1A1A2E),
+            getTooltipItems: (spot) {
+              final num = spot.x.abs() < 10
+                  ? spot.x.toStringAsFixed(1)
+                  : spot.x.toInt().toString();
+              final xStr = xLabel.isEmpty ? num : '$num$xLabel';
+              return ScatterTooltipItem(
+                '$xStr\n${spot.y.toStringAsFixed(2)}',
+                textStyle: const TextStyle(
+                    fontFamily: 'DotGothic', fontSize: 11, color: Colors.white),
+              );
+            },
+          ),
+          touchCallback: (event, response) {
+            if (event is! FlTapUpEvent) return;
+            setState(() {
+              _selectedIndex = response?.touchedSpot?.spotIndex;
+            });
+          },
+        ),
       ),
     );
   }
@@ -328,14 +448,21 @@ class _Scatter extends StatelessWidget {
 // Cycle scatter (X=mood, Y=phase 0-3)
 // ──────────────────────────────────────────────────
 
-class _CycleScatter extends StatelessWidget {
+class _CycleScatter extends StatefulWidget {
   final List<ScatterPoint> points;
 
   const _CycleScatter({required this.points});
 
   @override
+  State<_CycleScatter> createState() => _CycleScatterState();
+}
+
+class _CycleScatterState extends State<_CycleScatter> {
+  int? _selectedIndex;
+
+  @override
   Widget build(BuildContext context) {
-    final scatterSpots = points.map((p) => ScatterSpot(
+    final scatterSpots = widget.points.map((p) => ScatterSpot(
           p.x.clamp(-1.0, 1.0),
           p.y,
           dotPainter: FlDotCirclePainter(
@@ -418,7 +545,31 @@ class _CycleScatter extends StatelessWidget {
           ),
         ),
         scatterSpots: scatterSpots,
-        scatterTouchData: ScatterTouchData(enabled: false),
+        showingTooltipIndicators:
+            _selectedIndex != null ? [_selectedIndex!] : [],
+        scatterTouchData: ScatterTouchData(
+          enabled: true,
+          handleBuiltInTouches: false,
+          touchSpotThreshold: 24,
+          touchTooltipData: ScatterTouchTooltipData(
+            getTooltipColor: (_) => const Color(0xFF1A1A2E),
+            getTooltipItems: (spot) {
+              const phases = ['М', 'Ф', 'О', 'Л'];
+              final idx = spot.y.round().clamp(0, 3);
+              return ScatterTooltipItem(
+                '${spot.x.toStringAsFixed(2)}\n${phases[idx]}',
+                textStyle: const TextStyle(
+                    fontFamily: 'DotGothic', fontSize: 11, color: Colors.white),
+              );
+            },
+          ),
+          touchCallback: (event, response) {
+            if (event is! FlTapUpEvent) return;
+            setState(() {
+              _selectedIndex = response?.touchedSpot?.spotIndex;
+            });
+          },
+        ),
       ),
     );
   }
@@ -483,22 +634,25 @@ class _AxisLabels extends StatelessWidget {
     };
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text(
           xLabel,
+          textAlign: TextAlign.center,
           style: const TextStyle(
             fontFamily: 'DotGothic',
-            fontSize: 10,
-            color: Colors.white24,
+            fontSize: 12,
+            color: Colors.white54,
           ),
         ),
         const SizedBox(height: 2),
         Text(
           yLabel,
+          textAlign: TextAlign.center,
           style: const TextStyle(
             fontFamily: 'DotGothic',
-            fontSize: 10,
-            color: Colors.white24,
+            fontSize: 12,
+            color: Colors.white54,
           ),
         ),
       ],

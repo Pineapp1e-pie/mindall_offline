@@ -1,20 +1,23 @@
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/local/repositories/local_repository.dart';
 import '../../domain/models/chart_models.dart';
-import '../../domain/models/health_draft.dart';
 import '../../domain/models/mood_entry_with_mood.dart';
 import '../../domain/services/analytics_service.dart';
 import '../assets/mood_colors.dart';
 import '../models/mood_entry_ui_model.dart';
+import '../widgets/analytics/chart_shared.dart';
+import '../widgets/analytics/week_chart.dart';
+import '../widgets/analytics/month_calendar.dart';
+import '../widgets/analytics/year_bars_chart.dart';
+import '../widgets/analytics/quadrant_breakdown.dart';
 import 'correlation_screen.dart';
 import 'mood_category_screen.dart';
 import 'mood_entry_detail_screen.dart';
 
-enum _Period { day, week, month }
+enum _Period { day, week, month, year }
 
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
@@ -26,6 +29,7 @@ class AnalyticsScreen extends StatefulWidget {
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
   _Period _period = _Period.day;
   DateTime _selectedDay = DateTime.now();
+  DateTime? _chartSelectedDay;
   late AnalyticsService _service;
   bool _initialized = false;
 
@@ -39,24 +43,92 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
 
   DateTimeRange get _range {
-    final now = DateTime.now();
+    final d = _selectedDay;
     return switch (_period) {
       _Period.day => DateTimeRange(
-          start: DateTime(_selectedDay.year, _selectedDay.month, _selectedDay.day),
-          end: DateTime(_selectedDay.year, _selectedDay.month, _selectedDay.day, 23, 59, 59),
+          start: DateTime(d.year, d.month, d.day),
+          end: DateTime(d.year, d.month, d.day, 23, 59, 59),
         ),
-      _Period.week => DateTimeRange(
-          start: now.subtract(const Duration(days: 6)),
-          end: now,
-        ),
+      _Period.week => () {
+          final monday = d.subtract(Duration(days: d.weekday - 1));
+          final start = DateTime(monday.year, monday.month, monday.day);
+          final end = start
+              .add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
+          return DateTimeRange(start: start, end: end);
+        }(),
       _Period.month => DateTimeRange(
-          start: DateTime(now.year, now.month - 1, now.day),
-          end: now,
+          start: DateTime(d.year, d.month, 1),
+          end: DateTime(d.year, d.month + 1, 0, 23, 59, 59),
+        ),
+      _Period.year => DateTimeRange(
+          start: DateTime(d.year, 1, 1),
+          end: DateTime(d.year, 12, 31, 23, 59, 59),
         ),
     };
   }
 
-  void _setPeriod(_Period p) => setState(() => _period = p);
+  String get _rangeLabel {
+    final d = _selectedDay;
+    switch (_period) {
+      case _Period.day:
+        return DateFormat('d MMMM yyyy', 'ru').format(d);
+      case _Period.week:
+        final monday = d.subtract(Duration(days: d.weekday - 1));
+        final sunday = monday.add(const Duration(days: 6));
+        final fmt = DateFormat('d MMM', 'ru');
+        return '${fmt.format(monday)} – ${fmt.format(sunday)}';
+      case _Period.month:
+        return DateFormat('MMMM yyyy', 'ru').format(DateTime(d.year, d.month));
+      case _Period.year:
+        return '${d.year}';
+    }
+  }
+
+  bool get _canGoNext {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return switch (_period) {
+      _Period.day => _selectedDay.isBefore(today),
+      _Period.week => _range.end.isBefore(now),
+      _Period.month =>
+        _selectedDay.year < now.year ||
+            (_selectedDay.year == now.year &&
+                _selectedDay.month < now.month),
+      _Period.year => _selectedDay.year < now.year,
+    };
+  }
+
+  void _goPrev() {
+    setState(() {
+      _chartSelectedDay = null;
+      _selectedDay = switch (_period) {
+        _Period.day => _selectedDay.subtract(const Duration(days: 1)),
+        _Period.week => _selectedDay.subtract(const Duration(days: 7)),
+        _Period.month =>
+          DateTime(_selectedDay.year, _selectedDay.month - 1, 1),
+        _Period.year => DateTime(_selectedDay.year - 1, 1, 1),
+      };
+    });
+  }
+
+  void _goNext() {
+    if (!_canGoNext) return;
+    setState(() {
+      _chartSelectedDay = null;
+      _selectedDay = switch (_period) {
+        _Period.day => _selectedDay.add(const Duration(days: 1)),
+        _Period.week => _selectedDay.add(const Duration(days: 7)),
+        _Period.month =>
+          DateTime(_selectedDay.year, _selectedDay.month + 1, 1),
+        _Period.year => DateTime(_selectedDay.year + 1, 1, 1),
+      };
+    });
+  }
+
+  void _setPeriod(_Period p) => setState(() {
+        _period = p;
+        _chartSelectedDay = null;
+      });
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
@@ -109,55 +181,100 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 children: [
-                  // ── Выбор даты (только в режиме День) ──
-                  if (_period == _Period.day)
-                    GestureDetector(
-                      onTap: _pickDate,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: Row(
-                          children: [
-                            Text(
-                              DateFormat('d MMMM yyyy', 'ru').format(_selectedDay),
-                              style: const TextStyle(
-                                fontFamily: 'DotGothic',
-                                fontSize: 14,
-                                color: Colors.white70,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.expand_more,
-                                color: Colors.white38, size: 16),
-                          ],
+                  // ── Навигатор периода ──
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Row(
+                      children: [
+                        GestureDetector(
+                          onTap: _goPrev,
+                          child: const Icon(Icons.chevron_left,
+                              color: Colors.white54, size: 20),
                         ),
-                      ),
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          onTap: _period == _Period.day ? _pickDate : null,
+                          child: Text(
+                            _rangeLabel,
+                            style: TextStyle(
+                              fontFamily: 'DotGothic',
+                              fontSize: 13,
+                              color: _period == _Period.day
+                                  ? Colors.white70
+                                  : Colors.white54,
+                            ),
+                          ),
+                        ),
+                        if (_period == _Period.day) ...[
+                          const SizedBox(width: 2),
+                          const Icon(Icons.expand_more,
+                              color: Colors.white38, size: 14),
+                        ],
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          onTap: _canGoNext ? _goNext : null,
+                          child: Icon(Icons.chevron_right,
+                              color: _canGoNext
+                                  ? Colors.white54
+                                  : Colors.white12,
+                              size: 20),
+                        ),
+                      ],
                     ),
-
-                  // ── График ──
-                  _ChartSection(
-                    period: _period,
-                    selectedDay: _selectedDay,
-                    range: _range,
-                    service: _service,
-                    repository: context.read<LocalRepository>(),
                   ),
 
-                  // ── Записи (только День) ──
+                  // ── График ──
+                  GestureDetector(
+                    onHorizontalDragEnd: (details) {
+                      final v = details.primaryVelocity ?? 0;
+                      if (v < -200) _goNext();
+                      if (v > 200) _goPrev();
+                    },
+                    child: _ChartSection(
+                      period: _period,
+                      selectedDay: _selectedDay,
+                      range: _range,
+                      service: _service,
+                      repository: context.read<LocalRepository>(),
+                      onDaySelected: (day) =>
+                          setState(() => _chartSelectedDay = day),
+                    ),
+                  ),
+
+
+                  // ── Записи ──
                   if (_period == _Period.day) ...[
                     const SizedBox(height: 24),
                     _EntriesSection(
                       day: _selectedDay,
                       repository: context.read<LocalRepository>(),
                     ),
+                  ] else if (_chartSelectedDay != null &&
+                      (_period == _Period.week ||
+                          _period == _Period.month)) ...[
+                    const SizedBox(height: 24),
+                    _SectionLabel(
+                      DateFormat('d MMMM', 'ru').format(_chartSelectedDay!),
+                    ),
+                    const SizedBox(height: 12),
+                    _EntriesSection(
+                      day: _chartSelectedDay!,
+                      repository: context.read<LocalRepository>(),
+                    ),
                   ],
 
-                  const SizedBox(height: 24),
 
-                  // ── Здоровье ──
-                  _HealthSection(
-                    day: _period == _Period.day ? _selectedDay : DateTime.now(),
-                    repository: context.read<LocalRepository>(),
-                  ),
+
+                  // ── Распределение квадрантов (неделя / месяц / год) ──
+                  if (_period != _Period.day) ...[
+                    const SizedBox(height: 20),
+                    const _SectionLabel('За весь период:'),
+                    const SizedBox(height: 20),
+                    QuadrantBreakdown(
+                      future: _service.getQuadrantStats(
+                          _range.start, _range.end),
+                    ),
+                  ],
 
                   const SizedBox(height: 24),
 
@@ -165,17 +282,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   const _SectionLabel('Корреляции'),
                   const SizedBox(height: 12),
                   _CorrelationCard(
-                    title: 'Настроение : Сон (ч)',
+                    title: 'Настроение : Сон',
                     onTap: () => _openCorrelation(CorrelationType.sleep),
                   ),
                   const SizedBox(height: 8),
                   _CorrelationCard(
-                    title: 'Настроение : Активность',
+                    title: 'Настроение : Шаги',
                     onTap: () => _openCorrelation(CorrelationType.activity),
                   ),
                   const SizedBox(height: 8),
                   _CorrelationCard(
-                    title: 'Настроение : Погода (°C)',
+                    title: 'Настроение : Погода',
                     onTap: () => _openCorrelation(CorrelationType.weather),
                   ),
                   const SizedBox(height: 8),
@@ -190,7 +307,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: _BottomNav(),
     );
   }
 
@@ -216,23 +332,31 @@ class _PeriodSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _PeriodBtn(
-            label: 'День',
-            active: selected == _Period.day,
-            onTap: () => onChanged(_Period.day)),
-        const SizedBox(width: 8),
-        _PeriodBtn(
-            label: 'Неделя',
-            active: selected == _Period.week,
-            onTap: () => onChanged(_Period.week)),
-        const SizedBox(width: 8),
-        _PeriodBtn(
-            label: 'Месяц',
-            active: selected == _Period.month,
-            onTap: () => onChanged(_Period.month)),
-      ],
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _PeriodBtn(
+              label: 'День',
+              active: selected == _Period.day,
+              onTap: () => onChanged(_Period.day)),
+          const SizedBox(width: 8),
+          _PeriodBtn(
+              label: 'Неделя',
+              active: selected == _Period.week,
+              onTap: () => onChanged(_Period.week)),
+          const SizedBox(width: 8),
+          _PeriodBtn(
+              label: 'Месяц',
+              active: selected == _Period.month,
+              onTap: () => onChanged(_Period.month)),
+          const SizedBox(width: 8),
+          _PeriodBtn(
+              label: 'Год',
+              active: selected == _Period.year,
+              onTap: () => onChanged(_Period.year)),
+        ],
+      ),
     );
   }
 }
@@ -261,7 +385,7 @@ class _PeriodBtn extends StatelessWidget {
           style: TextStyle(
             fontFamily: 'DotGothic',
             fontSize: 12,
-            color: active ? Colors.black : Colors.white54,
+            color: active ? Colors.black : Colors.white70,
           ),
         ),
       ),
@@ -279,6 +403,7 @@ class _ChartSection extends StatelessWidget {
   final DateTimeRange range;
   final AnalyticsService service;
   final LocalRepository repository;
+  final void Function(DateTime)? onDaySelected;
 
   const _ChartSection({
     required this.period,
@@ -286,37 +411,57 @@ class _ChartSection extends StatelessWidget {
     required this.range,
     required this.service,
     required this.repository,
+    this.onDaySelected,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (period == _Period.day) {
-      return StreamBuilder<List<MoodEntryWithMood>>(
-        stream: repository.watchMoodEntriesForDay(
-          DateTime(selectedDay.year, selectedDay.month, selectedDay.day),
+    return switch (period) {
+      _Period.day => StreamBuilder<List<MoodEntryWithMood>>(
+          stream: repository.watchMoodEntriesForDay(
+            DateTime(selectedDay.year, selectedDay.month, selectedDay.day),
+          ),
+          builder: (context, snapshot) {
+            final entries = snapshot.data ?? [];
+            if (entries.isEmpty) return const EmptyChart(text: 'Нет записей');
+            return DayHourChart(entries: entries);
+          },
         ),
-        builder: (context, snapshot) {
-          final entries = snapshot.data ?? [];
-          if (entries.isEmpty) return const _EmptyChart(text: 'Нет записей');
-          return _DayHourChart(entries: entries);
-        },
-      );
-    }
-
-    return FutureBuilder<List<TimePoint>>(
-      future: service.getMoodTimeline(range.start, range.end),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const _ChartPlaceholder();
-        final points = snapshot.data!;
-        if (points.isEmpty) return const _EmptyChart();
-        return _MoodLineChart(points: points);
-      },
-    );
+      _Period.week => FutureBuilder<List<DayStats>>(
+          future: service.getDayStatsList(range.start, range.end),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) return const ChartPlaceholder();
+            return WeekChart(
+              dayStats: snapshot.data!,
+              weekStart: range.start,
+              onDayTap: onDaySelected,
+            );
+          },
+        ),
+      _Period.month => FutureBuilder<List<DayStats>>(
+          future: service.getDayStatsList(range.start, range.end),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) return const ChartPlaceholder();
+            return MonthCalendar(
+              dayStats: snapshot.data!,
+              month: range.start,
+              onDayTap: onDaySelected,
+            );
+          },
+        ),
+      _Period.year => FutureBuilder<List<MonthQuadrantData>>(
+          future: service.getYearQuadrantStats(selectedDay.year),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) return const ChartPlaceholder();
+            return YearBarsChart(data: snapshot.data!);
+          },
+        ),
+    };
   }
 }
 
 // ──────────────────────────────────────────────────
-// Entries section (День)
+// Entries section
 // ──────────────────────────────────────────────────
 
 class _EntriesSection extends StatelessWidget {
@@ -327,8 +472,7 @@ class _EntriesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final date =
-        DateTime(day.year, day.month, day.day);
+    final date = DateTime(day.year, day.month, day.day);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -419,7 +563,7 @@ class _EntryRow extends StatelessWidget {
               style: const TextStyle(
                 fontFamily: 'DotGothic',
                 fontSize: 13,
-                color: Colors.white, // эта строчка
+                color: Colors.white,
               ),
             ),
             const SizedBox(width: 16),
@@ -435,101 +579,6 @@ class _EntryRow extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             const Icon(Icons.chevron_right, color: Colors.white70, size: 16),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ──────────────────────────────────────────────────
-// Health section
-// ──────────────────────────────────────────────────
-
-class _HealthSection extends StatelessWidget {
-  final DateTime day;
-  final LocalRepository repository;
-
-  const _HealthSection({required this.day, required this.repository});
-
-  @override
-  Widget build(BuildContext context) {
-    final date = DateTime(day.year, day.month, day.day);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _SectionLabel('Здоровье'),
-        const SizedBox(height: 12),
-        FutureBuilder(
-          future: repository.getHealthDataForDay(date),
-          builder: (context, snapshot) {
-            final h = snapshot.data;
-            final sleepH =
-                h?.sleepMinutes != null ? (h!.sleepMinutes! / 60).toStringAsFixed(1) : '—';
-            final steps = h?.stepsAmount?.toString() ?? '—';
-            final phase = h?.cyclePhase != null ? _phaseLabel(h!.cyclePhase!) : '—';
-
-            return Row(
-              children: [
-                _HealthChip(icon: '🌙', label: 'Сон', value: '$sleepH ч'),
-                const SizedBox(width: 8),
-                _HealthChip(icon: '👟', label: 'Шаги', value: steps),
-                const SizedBox(width: 8),
-                _HealthChip(icon: '🔄', label: 'Цикл', value: phase),
-              ],
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  String _phaseLabel(CyclePhase phase) => switch (phase) {
-        CyclePhase.menstruation => 'Менстр.',
-        CyclePhase.follicular => 'Фолл.',
-        CyclePhase.ovulation => 'Овуляция',
-        CyclePhase.luteal => 'Лютеин.',
-      };
-}
-
-class _HealthChip extends StatelessWidget {
-  final String icon;
-  final String label;
-  final String value;
-
-  const _HealthChip(
-      {required this.icon, required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFF18221C),
-          border: Border.all(color: Colors.white12, width: 1),
-        ),
-        child: Column(
-          children: [
-            Text(icon, style: const TextStyle(fontSize: 16)),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: const TextStyle(
-                fontFamily: 'DotGothic',
-                fontSize: 12,
-                color: Colors.white,
-              ),
-            ),
-            Text(
-              label,
-              style: const TextStyle(
-                fontFamily: 'DotGothic',
-                fontSize: 9,
-                color: Colors.white38,
-              ),
-            ),
           ],
         ),
       ),
@@ -591,8 +640,8 @@ class _SectionLabel extends StatelessWidget {
       text,
       style: const TextStyle(
         fontFamily: 'DotGothic',
-        fontSize: 14,
-        color: Colors.white54,
+        fontSize: 18,
+        color: Colors.white70,
         letterSpacing: 1,
       ),
     );
@@ -600,231 +649,15 @@ class _SectionLabel extends StatelessWidget {
 }
 
 // ──────────────────────────────────────────────────
-// Chart widgets
-// ──────────────────────────────────────────────────
-
-class _ChartPlaceholder extends StatelessWidget {
-  const _ChartPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      height: 160,
-      child: Center(child: CircularProgressIndicator(color: Colors.white70)),
-    );
-  }
-}
-
-class _EmptyChart extends StatelessWidget {
-  final String text;
-  const _EmptyChart({this.text = 'Нет данных'});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 160,
-      child: Center(
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontFamily: 'DotGothic',
-            fontSize: 13,
-            color: Colors.white70,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-Color _moodColor(double v) {
-  if (v > 0.2) return const Color(0xFF66FF66);
-  if (v < -0.2) return const Color(0xFFFF7979);
-  return const Color(0xFFFFEB89);
-}
-
-FlGridData _grid() => FlGridData(
-      show: true,
-      drawVerticalLine: false,
-      horizontalInterval: 0.5,
-      getDrawingHorizontalLine: (v) => FlLine(
-        color: v.abs() < 0.01 ? Colors.white24 : Colors.white12,
-        strokeWidth: v.abs() < 0.01 ? 1.5 : 1,
-      ),
-    );
-
-// График по часам для режима «День»
-class _DayHourChart extends StatelessWidget {
-  final List<MoodEntryWithMood> entries;
-  const _DayHourChart({required this.entries});
-
-  @override
-  Widget build(BuildContext context) {
-    final spots = entries.map((e) {
-      final hour = e.entry.createdAt.hour + e.entry.createdAt.minute / 60.0;
-      final color = moodColors[e.mood.name] ?? Colors.white;
-      return ScatterSpot(
-        hour,
-        e.mood.y.clamp(-1.0, 1.0),
-        dotPainter: FlDotCirclePainter(
-          radius: 7,
-          color: color,
-          strokeColor: Colors.transparent,
-          strokeWidth: 0,
-        ),
-      );
-    }).toList();
-
-    final hours = entries.map((e) => e.entry.createdAt.hour + e.entry.createdAt.minute / 60.0);
-    final rawMin = hours.reduce((a, b) => a < b ? a : b);
-    final rawMax = hours.reduce((a, b) => a > b ? a : b);
-    // Округляем до кратного 4 с отступом
-    final minX = ((rawMin / 4).floor() * 4).toDouble();
-    final maxX = ((rawMax / 4).ceil() * 4).toDouble().clamp(minX + 4, 24.0);
-
-    return SizedBox(
-      height: 160,
-      child: ScatterChart(
-        ScatterChartData(
-          minX: minX,
-          maxX: maxX,
-          minY: -1.2,
-          maxY: 1.2,
-          gridData: FlGridData(
-            show: true,
-            drawVerticalLine: false,
-            horizontalInterval: 0.5,
-            getDrawingHorizontalLine: (v) => FlLine(
-              color: v.abs() < 0.01 ? Colors.white24 : Colors.white12,
-              strokeWidth: v.abs() < 0.01 ? 1.5 : 1,
-            ),
-          ),
-          borderData: FlBorderData(show: false),
-          titlesData: FlTitlesData(
-            leftTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: 4,
-                getTitlesWidget: (val, meta) {
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      '${val.toInt()}:00',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                        fontFamily: 'DotGothic',
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-          scatterSpots: spots,
-          scatterTouchData: ScatterTouchData(enabled: false),
-        ),
-      ),
-    );
-  }
-}
-
-// График для режима «Неделя» / «Месяц» — линейный
-class _MoodLineChart extends StatelessWidget {
-  final List<TimePoint> points;
-  const _MoodLineChart({required this.points});
-
-  @override
-  Widget build(BuildContext context) {
-    final spots = points.asMap().entries
-        .map((e) => FlSpot(e.key.toDouble(), e.value.value.clamp(-1.0, 1.0)))
-        .toList();
-    final avg =
-        points.map((p) => p.value).reduce((a, b) => a + b) / points.length;
-
-    return SizedBox(
-      height: 160,
-      child: LineChart(
-        LineChartData(
-          minY: -1,
-          maxY: 1,
-          clipData: const FlClipData.all(),
-          gridData: _grid(),
-          borderData: FlBorderData(show: false),
-          titlesData: FlTitlesData(
-            leftTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: points.length <= 12,
-                interval: 1,
-                getTitlesWidget: (val, meta) {
-                  final idx = val.toInt();
-                  if (val % 1 != 0 || idx < 0 || idx >= points.length) {
-                    return const SizedBox.shrink();
-                  }
-                  final d = points[idx].time;
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      '${d.day}.${d.month}',
-                      style: const TextStyle(
-                          color: Colors.white38,
-                          fontSize: 9,
-                          fontFamily: 'DotGothic'),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-          lineBarsData: [
-            LineChartBarData(
-              spots: spots,
-              isCurved: true,
-              curveSmoothness: 0.3,
-              color: _moodColor(avg),
-              barWidth: 2,
-              dotData: FlDotData(
-                show: points.length <= 14,
-                getDotPainter: (spot, _, __, ___) => FlDotCirclePainter(
-                  radius: 3,
-                  color: _moodColor(spot.y),
-                  strokeWidth: 0,
-                  strokeColor: Colors.transparent,
-                ),
-              ),
-              belowBarData: BarAreaData(
-                show: true,
-                color: _moodColor(avg).withValues(alpha: 0.08),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ──────────────────────────────────────────────────
-// Bottom nav (shared with HomeScreen style)
+// Bottom nav
 // ──────────────────────────────────────────────────
 
 class _BottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 24),
+      padding: EdgeInsets.only(top: 24, bottom: 24 + bottomInset),
       color: const Color(0xFF0E1511),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
