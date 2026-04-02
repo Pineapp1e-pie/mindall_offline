@@ -276,7 +276,7 @@ class LocalRepositoryImpl implements LocalRepository {
       final mood = row.readTable(db.moods);
       final weather = row.readTable(db.weatherData);
       return MoodWeatherRecord(
-        moodY: mood.y,
+        moodX: mood.x,
         moodName: mood.name,
         temperatureCategory: weather.temperatureCategory,
         rawTemperature: weather.rawTemperature,

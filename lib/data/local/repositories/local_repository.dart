@@ -6,13 +6,13 @@ import '../../../domain/models/mood_entry_draft.dart';
 import '../tables/weather_data.dart';
 
 class MoodWeatherRecord {
-  final double moodY;
+  final double moodX;
   final String moodName;
   final TemperatureCategory temperatureCategory;
   final double? rawTemperature;
 
   const MoodWeatherRecord({
-    required this.moodY,
+    required this.moodX,
     required this.moodName,
     required this.temperatureCategory,
     this.rawTemperature,

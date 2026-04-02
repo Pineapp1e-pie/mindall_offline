@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/local/repositories/local_repository.dart';
+import '../../data/remote/supabase_sync_service.dart';
 import '../../domain/models/mood_entry_draft.dart';
 import '../../domain/models/health_draft.dart';
 import '../../domain/models/user_profile.dart';
@@ -268,6 +269,9 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
       await DailyMoodAnalyzer(_repository).analyzeDay(entryDate);
 
       if (!mounted) return;
+
+      // Фоновая синхронизация — не блокируем UI
+      context.read<SupabaseSyncService>().syncAll();
 
       Navigator.pushAndRemoveUntil(
         context,

@@ -9,6 +9,7 @@ import 'package:pixelarticons/pixelarticons.dart';
 
 import 'mood_entry_detail_screen.dart';
 import 'analytics_screen.dart';
+import 'profile_screen.dart';
 
 import 'package:provider/provider.dart';
 
@@ -298,7 +299,10 @@ class _BottomMenu extends StatelessWidget {
           _BottomIcon(
             icon: Pixel.user,
             onTap: () {
-              // профиль
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ProfileScreen()),
+              );
             },
           ),
           _BottomIcon(

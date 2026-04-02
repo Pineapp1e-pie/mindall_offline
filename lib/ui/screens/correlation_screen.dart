@@ -127,7 +127,7 @@ class _CorrelationScreenState extends State<CorrelationScreen> {
   String get _title => switch (widget.type) {
         CorrelationType.sleep => 'Настроение : Сон (ч)',
         CorrelationType.activity => 'Настроение : Активность',
-        CorrelationType.weather => 'Настроение : Погода (°C)',
+        CorrelationType.weather => 'Настроение : Погода',
         CorrelationType.cycle => 'Цикл : Настроение',
       };
 
@@ -144,6 +144,152 @@ class _CorrelationScreenState extends State<CorrelationScreen> {
         CorrelationType.weather => 'Нет данных о погоде',
         CorrelationType.cycle => 'Нет данных о цикле',
       };
+
+  void _showHelp(BuildContext context) {
+    final (title, body) = switch (widget.type) {
+      CorrelationType.sleep => (
+          'Настроение и сон',
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _infoText('По горизонтали — часы сна за день, по вертикали — настроение от −1 (плохое) до +1 (хорошее).'),
+              const SizedBox(height: 12),
+              _infoText('Каждая точка — одна запись настроения в день с известными данными о сне. Цвет точки соответствует эмоции.'),
+              const SizedBox(height: 12),
+              _infoText('Если точки скапливаются правее и выше — больше сна связано с лучшим настроением. Если хаотично — связи нет.'),
+            ],
+          ),
+        ),
+      CorrelationType.activity => (
+          'Настроение и активность',
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _infoText('По горизонтали — количество шагов за день, по вертикали — настроение от −1 (плохое) до +1 (хорошее).'),
+              const SizedBox(height: 12),
+              _infoText('Каждая точка — одна запись настроения в день с известными данными о шагах. Цвет точки соответствует эмоции.'),
+              const SizedBox(height: 12),
+              _infoText('Если точки правее и выше — больше активности связано с лучшим настроением.'),
+            ],
+          ),
+        ),
+      CorrelationType.weather => (
+          'Настроение и погода',
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _infoText('По горизонтали — группа погоды, по вертикали — настроение от −1 (плохое) до +1 (хорошее).'),
+              const SizedBox(height: 12),
+              _infoText('Группы:'),
+              const SizedBox(height: 8),
+              _dotRow(const Color(0xFF89CFF0), 'Очень холодно (≤ −25°)'),
+              _dotRow(const Color(0xFF5B9BD5), 'Холодно (−25…−10°)'),
+              _dotRow(const Color(0xFF7EC8E3), 'Прохладно (−10…+5°)'),
+              _dotRow(const Color(0xFF66FF66), 'Комфортно (+5…+20°)'),
+              _dotRow(const Color(0xFFFFDD3B), 'Тепло (+20…+30°)'),
+              _dotRow(const Color(0xFFFF5959), 'Жарко (≥ +30°)'),
+              const SizedBox(height: 12),
+              _infoText('Смотри в каком столбце точки выше — при такой погоде настроение обычно лучше.'),
+            ],
+          ),
+        ),
+      CorrelationType.cycle => (
+          'Цикл и настроение',
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _infoText('По горизонтали — настроение от −1 (плохое) до +1 (хорошее), по вертикали — фаза цикла.'),
+              const SizedBox(height: 12),
+              _infoText('Фазы:'),
+              const SizedBox(height: 8),
+              _dotRow(const Color(0xFFFF7979), 'М — менструальная'),
+              _dotRow(const Color(0xFF66FF66), 'Ф — фолликулярная'),
+              _dotRow(const Color(0xFFFFEB89), 'О — овуляция'),
+              _dotRow(const Color(0xFFB8A1FF), 'Л — лютеиновая'),
+              const SizedBox(height: 12),
+              _infoText('Смотри в какой строке точки сдвинуты правее — в эту фазу настроение обычно лучше.'),
+            ],
+          ),
+        ),
+    };
+    _showInfoSheet(context, title: title, body: body);
+  }
+
+  void _showInfoSheet(BuildContext context,
+      {required String title, required Widget body}) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Container(
+        margin: const EdgeInsets.all(16),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.75,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0xFF18221C),
+          border: Border.all(color: Colors.white24, width: 1.5),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontFamily: 'DotGothic',
+                  fontSize: 16,
+                  color: Colors.white,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              body,
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static Widget _infoText(String text) => Text(
+        text,
+        style: const TextStyle(
+          fontFamily: 'DotGothic',
+          fontSize: 13,
+          color: Colors.white70,
+          height: 1.6,
+        ),
+      );
+
+  static Widget _dotRow(Color color, String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 10,
+              height: 10,
+              margin: const EdgeInsets.only(top: 3, right: 10),
+              color: color,
+            ),
+            Expanded(
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontFamily: 'DotGothic',
+                  fontSize: 13,
+                  color: Colors.white70,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -164,6 +310,30 @@ class _CorrelationScreenState extends State<CorrelationScreen> {
             color: Colors.white,
           ),
         ),
+        actions: [
+          GestureDetector(
+            onTap: () => _showHelp(context),
+            child: Container(
+              width: 22,
+              height: 22,
+              margin: const EdgeInsets.only(right: 16),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white30, width: 1),
+              ),
+              child: const Center(
+                child: Text(
+                  '?',
+                  style: TextStyle(
+                    fontFamily: 'DotGothic',
+                    fontSize: 11,
+                    color: Colors.white38,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(
@@ -232,16 +402,22 @@ class _CorrelationScreenState extends State<CorrelationScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Подсказка
                         if (widget.type == CorrelationType.cycle)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 12),
                             child: _CycleLegend(),
                           ),
+                        if (widget.type == CorrelationType.weather)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 12),
+                            child: _WeatherLegend(),
+                          ),
                         Expanded(
-                          child: widget.type == CorrelationType.cycle
-                              ? _CycleScatter(points: points)
-                              : _Scatter(points: points, xLabel: _xLabel),
+                          child: switch (widget.type) {
+                            CorrelationType.cycle => _CycleScatter(points: points),
+                            CorrelationType.weather => _WeatherScatter(points: points),
+                            _ => _Scatter(points: points, xLabel: _xLabel),
+                          },
                         ),
                       ],
                     ),
@@ -570,6 +746,177 @@ class _CycleScatterState extends State<_CycleScatter> {
             });
           },
         ),
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────
+// Weather scatter (X=mood, Y=category 0-5)
+// ──────────────────────────────────────────────────
+
+class _WeatherScatter extends StatefulWidget {
+  final List<ScatterPoint> points;
+  const _WeatherScatter({required this.points});
+
+  @override
+  State<_WeatherScatter> createState() => _WeatherScatterState();
+}
+
+class _WeatherScatterState extends State<_WeatherScatter> {
+  int? _selectedIndex;
+
+  static const _labels = ['ОХ', 'Хол', 'Пр', 'Ком', 'Теп', 'Жар'];
+  static const _colors = [
+    Color(0xFF89CFF0),
+    Color(0xFF5B9BD5),
+    Color(0xFF7EC8E3),
+    Color(0xFF66FF66),
+    Color(0xFFFFDD3B),
+    Color(0xFFFF5959),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final scatterSpots = widget.points.map((p) => ScatterSpot(
+          p.x,
+          p.y.clamp(-1.0, 1.0),
+          dotPainter: FlDotCirclePainter(
+            radius: 6,
+            color: _pointColor(p),
+            strokeColor: Colors.transparent,
+            strokeWidth: 0,
+          ),
+        )).toList();
+
+    return ScatterChart(
+      ScatterChartData(
+        minX: -0.5,
+        maxX: 5.5,
+        minY: -1.15,
+        maxY: 1.15,
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: 0.5,
+          getDrawingHorizontalLine: (v) => FlLine(
+            color: v.abs() < 0.01 ? Colors.white24 : Colors.white12,
+            strokeWidth: v.abs() < 0.01 ? 1.5 : 1,
+          ),
+        ),
+        borderData: FlBorderData(show: false),
+        titlesData: FlTitlesData(
+          rightTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles:
+              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              interval: 1,
+              reservedSize: 28,
+              getTitlesWidget: (val, meta) {
+                final idx = val.round();
+                if (idx < 0 || idx > 5 || (val - idx).abs() > 0.01) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    _labels[idx],
+                    style: TextStyle(
+                      color: _colors[idx],
+                      fontSize: 10,
+                      fontFamily: 'DotGothic',
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+        scatterSpots: scatterSpots,
+        showingTooltipIndicators:
+            _selectedIndex != null ? [_selectedIndex!] : [],
+        scatterTouchData: ScatterTouchData(
+          enabled: true,
+          handleBuiltInTouches: false,
+          touchSpotThreshold: 24,
+          touchTooltipData: ScatterTouchTooltipData(
+            getTooltipColor: (_) => const Color(0xFF1A1A2E),
+            getTooltipItems: (spot) {
+              final idx = spot.x.round().clamp(0, 5);
+              return ScatterTooltipItem(
+                '${_labels[idx]}\n${spot.y.toStringAsFixed(2)}',
+                textStyle: const TextStyle(
+                    fontFamily: 'DotGothic', fontSize: 11, color: Colors.white),
+              );
+            },
+          ),
+          touchCallback: (event, response) {
+            if (event is! FlTapUpEvent) return;
+            setState(() {
+              _selectedIndex = response?.touchedSpot?.spotIndex;
+            });
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────
+// Weather legend
+// ──────────────────────────────────────────────────
+
+class _WeatherLegend extends StatelessWidget {
+  const _WeatherLegend();
+
+  static const _items = [
+    (color: Color(0xFF89CFF0), abbr: 'ОХ', rest: ' — очень холодно  (≤ −25°)'),
+    (color: Color(0xFF5B9BD5), abbr: 'Хол', rest: ' — холодно  (−25…−10°)'),
+    (color: Color(0xFF7EC8E3), abbr: 'Пр', rest: ' — прохладно  (−10…+5°)'),
+    (color: Color(0xFF66FF66), abbr: 'Ком', rest: ' — комфортно  (+5…+20°)'),
+    (color: Color(0xFFFFDD3B), abbr: 'Теп', rest: ' — тепло  (+20…+30°)'),
+    (color: Color(0xFFFF5959), abbr: 'Жар', rest: ' — жарко  (≥ +30°)'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF18221C),
+        border: Border.all(color: Colors.white12, width: 1),
+      ),
+      width: double.infinity,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: _items
+            .map((item) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: RichText(
+                    text: TextSpan(
+                      style: const TextStyle(
+                        fontFamily: 'DotGothic',
+                        fontSize: 11,
+                      ),
+                      children: [
+                        TextSpan(
+                          text: item.abbr,
+                          style: TextStyle(color: item.color),
+                        ),
+                        TextSpan(
+                          text: item.rest,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      ],
+                    ),
+                  ),
+                ))
+            .toList(),
       ),
     );
   }

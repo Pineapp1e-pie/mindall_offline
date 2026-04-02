@@ -67,7 +67,7 @@ class DayHourChart extends StatelessWidget {
       final color = moodColors[e.mood.name] ?? Colors.white;
       return ScatterSpot(
         hour,
-        e.mood.y.clamp(-1.0, 1.0),
+        e.mood.x.clamp(-1.0, 1.0),
         dotPainter: FlDotCirclePainter(
           radius: 7,
           color: color,

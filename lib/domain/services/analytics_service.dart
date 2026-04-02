@@ -24,7 +24,7 @@ class AnalyticsService {
     for (final e in entries) {
       final d = e.entry.createdAt;
       final day = DateTime(d.year, d.month, d.day);
-      byDay.putIfAbsent(day, () => []).add(e.mood.y);
+      byDay.putIfAbsent(day, () => []).add(e.mood.x);
     }
 
     final sorted = byDay.entries.toList()
@@ -48,7 +48,7 @@ class AnalyticsService {
         DateTime(day.year, day.month, day.day, 0, 0).add(
           Duration(minutes: (h * 60).round()),
         ),
-        e.mood.y,
+        e.mood.x,
       );
     }).toList();
   }
@@ -71,7 +71,7 @@ class AnalyticsService {
       for (final e in entries) {
         points.add(ScatterPoint(
           h.sleepMinutes! / 60.0,
-          e.mood.y,
+          e.mood.x,
           moodName: e.mood.name,
         ));
       }
@@ -98,7 +98,7 @@ class AnalyticsService {
       for (final e in entries) {
         points.add(ScatterPoint(
           h.stepsAmount!.toDouble(),
-          e.mood.y,
+          e.mood.x,
           moodName: e.mood.name,
         ));
       }
@@ -118,18 +118,21 @@ class AnalyticsService {
   ) async {
     final pairs = await repository.getMoodWeatherPairs(from, to);
     return pairs.map((p) {
-      final temp = p.rawTemperature ?? _categoryMidpoint(p.temperatureCategory);
-      return ScatterPoint(temp, p.moodY, moodName: p.moodName);
+      return ScatterPoint(
+        _categoryIndex(p.temperatureCategory).toDouble(),
+        p.moodX,
+        moodName: p.moodName,
+      );
     }).toList();
   }
 
-  double _categoryMidpoint(TemperatureCategory cat) => switch (cat) {
-        TemperatureCategory.veryCold => -30.0,
-        TemperatureCategory.cold => -17.0,
-        TemperatureCategory.cool => -2.0,
-        TemperatureCategory.comfortable => 12.0,
-        TemperatureCategory.warm => 25.0,
-        TemperatureCategory.hot => 35.0,
+  int _categoryIndex(TemperatureCategory cat) => switch (cat) {
+        TemperatureCategory.veryCold => 0,
+        TemperatureCategory.cold => 1,
+        TemperatureCategory.cool => 2,
+        TemperatureCategory.comfortable => 3,
+        TemperatureCategory.warm => 4,
+        TemperatureCategory.hot => 5,
       };
 
   // ------------------------------
@@ -149,7 +152,7 @@ class AnalyticsService {
       final entries = await repository.getMoodEntriesForDay(h.date);
       for (final e in entries) {
         points.add(ScatterPoint(
-          e.mood.y,
+          e.mood.x,
           _phaseIndex(h.cyclePhase!).toDouble(),
           moodName: e.mood.name,
         ));
@@ -204,7 +207,7 @@ class AnalyticsService {
     final result = byDay.entries.map((entry) {
       final dayEntries = entry.value;
       final avgMood =
-          dayEntries.map((e) => e.mood.y).reduce((a, b) => a + b) /
+          dayEntries.map((e) => e.mood.x).reduce((a, b) => a + b) /
           dayEntries.length;
       return DayStats(entry.key, avgMood, _calcDayType(dayEntries));
     }).toList();

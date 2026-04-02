@@ -12,7 +12,6 @@ import '../widgets/analytics/chart_shared.dart';
 import '../widgets/analytics/week_chart.dart';
 import '../widgets/analytics/month_calendar.dart';
 import '../widgets/analytics/year_bars_chart.dart';
-import '../widgets/analytics/quadrant_breakdown.dart';
 import 'correlation_screen.dart';
 import 'mood_category_screen.dart';
 import 'mood_entry_detail_screen.dart';
@@ -147,6 +146,146 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     if (picked != null) setState(() => _selectedDay = picked);
   }
 
+  void _showChartHelp(BuildContext context) {
+    final (title, body) = switch (_period) {
+      _Period.day => (
+          'График за день',
+          _buildDayHelp(),
+        ),
+      _Period.week => (
+          'График за неделю',
+          _buildWeekMonthHelp(isMonth: false),
+        ),
+      _Period.month => (
+          'График за месяц',
+          _buildWeekMonthHelp(isMonth: true),
+        ),
+      _Period.year => (
+          'График за год',
+          _buildYearHelp(),
+        ),
+    };
+    _showInfoSheet(context, title: title, body: body);
+  }
+
+  Widget _buildDayHelp() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _infoText('По горизонтали — время суток, по вертикали — настроение от −1 (плохое) до +1 (хорошее). Каждая точка — одна запись.'),
+          const SizedBox(height: 16),
+          _infoText('Цвет точки:'),
+          const SizedBox(height: 10),
+          _dotRow(const Color(0xFF46FF46), 'спокойное позитивное — покой, гармония, комфорт и тд'),
+          _dotRow(const Color(0xFFFFDD3B), 'активное позитивное — радость, восторг, энтузиазм и тд'),
+          _dotRow(const Color(0xFF835AFF), 'спокойное негативное — грусть, апатия, одиночество и тд'),
+          _dotRow(const Color(0xFFFF5959), 'активное негативное — злость, тревога, раздражение и тд'),
+        ],
+      );
+
+  Widget _buildWeekMonthHelp({required bool isMonth}) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _infoText(isMonth
+              ? 'Каждая клетка — один день. Нажми на день, чтобы посмотреть записи.'
+              : 'Каждая точка — среднее настроение за день от −1 (плохой день) до +1 (хороший день). Нажми на точку, чтобы посмотреть записи дня.'),
+          const SizedBox(height: 16),
+          _infoText('Цвет показывает насколько разным было настроение в течение дня:'),
+          const SizedBox(height: 10),
+          _dotRow(const Color(0xFF7EC8E3), 'стабильный — эмоции примерно одинаковые'),
+          _dotRow(const Color(0xFFB8A9E3), 'сбалансированный — разные, но в одном направлении'),
+          _dotRow(const Color(0xFFF4A261), 'контрастный — настроение сильно менялось в течение дня'),
+        ],
+      );
+
+  Widget _buildYearHelp() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _infoText('Каждый столбец — один месяц. Высота — общее количество записей. Цвета показывают из каких эмоций состоял месяц:'),
+          const SizedBox(height: 10),
+          _dotRow(const Color(0xFF46FF46), 'спокойное позитивное — покой, гармония, комфорт и тд'),
+          _dotRow(const Color(0xFFFFDD3B), 'активное позитивное — радость, восторг, энтузиазм и тд'),
+          _dotRow(const Color(0xFF835AFF), 'спокойное негативное — грусть, апатия, одиночество и тд'),
+          _dotRow(const Color(0xFFFF5959), 'активное негативное — злость, тревога, раздражение и тд'),
+        ],
+      );
+
+
+  static Widget _infoText(String text) => Text(
+        text,
+        style: const TextStyle(
+          fontFamily: 'DotGothic',
+          fontSize: 13,
+          color: Colors.white70,
+          height: 1.6,
+        ),
+      );
+
+  static Widget _dotRow(Color color, String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 10,
+              height: 10,
+              margin: const EdgeInsets.only(top: 3, right: 10),
+              color: color,
+            ),
+            Expanded(
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontFamily: 'DotGothic',
+                  fontSize: 13,
+                  color: Colors.white70,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+
+  void _showInfoSheet(BuildContext context,
+      {required String title, required Widget body}) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Container(
+        margin: const EdgeInsets.all(16),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.75,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0xFF18221C),
+          border: Border.all(color: Colors.white24, width: 1.5),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontFamily: 'DotGothic',
+                  fontSize: 16,
+                  color: Colors.white,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              body,
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -219,6 +358,29 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                   : Colors.white12,
                               size: 20),
                         ),
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () => _showChartHelp(context),
+                          child: Container(
+                            width: 22,
+                            height: 22,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                  color: Colors.white30, width: 1),
+                            ),
+                            child: const Center(
+                              child: Text(
+                                '?',
+                                style: TextStyle(
+                                  fontFamily: 'DotGothic',
+                                  fontSize: 11,
+                                  color: Colors.white38,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -265,16 +427,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
 
 
-                  // ── Распределение квадрантов (неделя / месяц / год) ──
-                  if (_period != _Period.day) ...[
-                    const SizedBox(height: 20),
-                    const _SectionLabel('За весь период:'),
-                    const SizedBox(height: 20),
-                    QuadrantBreakdown(
-                      future: _service.getQuadrantStats(
-                          _range.start, _range.end),
-                    ),
-                  ],
 
                   const SizedBox(height: 24),
 
