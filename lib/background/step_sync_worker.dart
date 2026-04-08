@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:flutter/widgets.dart';
 import 'package:health/health.dart';
 import 'package:workmanager/workmanager.dart';
 
@@ -10,25 +11,41 @@ const stepSyncTaskName = 'stepSync2330Task';
 /// Должна быть top-level функцией (не метод класса).
 @pragma('vm:entry-point')
 void callbackDispatcher() {
+  WidgetsFlutterBinding.ensureInitialized();
   Workmanager().executeTask((taskName, inputData) async {
     if (taskName == stepSyncTaskName) {
       await _syncSteps();
+      // Перепланируем на следующие сутки
+      _scheduleNextDay();
     }
-    return true; // true = задача выполнена успешно
+    return true;
   });
+}
+
+void _scheduleNextDay() {
+  final now = DateTime.now();
+  final tomorrow = DateTime(now.year, now.month, now.day + 1, 23, 30);
+  final delay = tomorrow.difference(now);
+
+  Workmanager().registerOneOffTask(
+    'stepSync_${tomorrow.year}_${tomorrow.month}_${tomorrow.day}',
+    stepSyncTaskName,
+    initialDelay: delay,
+    constraints: Constraints(networkType: NetworkType.notRequired),
+    existingWorkPolicy: ExistingWorkPolicy.replace,
+  );
 }
 
 Future<void> _syncSteps() async {
   try {
     final health = Health();
 
-    // Запрашиваем разрешения (в фоне они уже должны быть выданы)
-    final granted = await health.requestAuthorization(
+    // Проверяем разрешения без показа диалога
+    final hasPermission = await health.hasPermissions(
       [HealthDataType.STEPS],
       permissions: [HealthDataAccess.READ],
     );
-
-    if (!granted) {
+    if (hasPermission != true) {
       print('❌ [Worker] Нет разрешения на чтение шагов');
       return;
     }

@@ -131,27 +131,11 @@ class HealthService {
 
       print('🟡 Fetching steps from $start to $end');
 
-      final data = await _health.getHealthDataFromTypes(
-        types: [HealthDataType.STEPS],
-        startTime: start,
-        endTime: end,
-      );
+      // getTotalStepsInInterval агрегирует шаги с дедупликацией по источникам
+      final steps = await _health.getTotalStepsInInterval(start, end);
 
-      print('✅ Received ${data.length} step entries');
-
-      if (data.isEmpty) {
-        print('ℹ️ No step data found');
-        return null;
-      }
-
-      double totalSteps = 0;
-      for (final item in data) {
-        print('   - Step: ${item.value} at ${item.dateFrom}');
-        totalSteps += (item.value as NumericHealthValue).numericValue.toDouble();
-      }
-
-      print('✅ Total steps: $totalSteps');
-      return totalSteps.round();
+      print('✅ Total steps: $steps');
+      return steps;
 
     } catch (e) {
       print('❌ Error in getStepAmount: $e');
