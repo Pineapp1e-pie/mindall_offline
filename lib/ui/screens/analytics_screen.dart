@@ -12,6 +12,7 @@ import '../widgets/analytics/chart_shared.dart';
 import '../widgets/analytics/week_chart.dart';
 import '../widgets/analytics/month_calendar.dart';
 import '../widgets/analytics/year_bars_chart.dart';
+import '../widgets/analytics/quadrant_breakdown.dart';
 import 'correlation_screen.dart';
 import 'mood_category_screen.dart';
 import 'mood_entry_detail_screen.dart';
@@ -427,6 +428,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
 
 
+
+                  // ── Распределение квадрантов (только год) ──
+                  if (_period == _Period.year) ...[
+                    const SizedBox(height: 20),
+                    const _SectionLabel('За весь период:'),
+                    const SizedBox(height: 20),
+                    QuadrantBreakdown(
+                      future: _service.getQuadrantStats(
+                          _range.start, _range.end),
+                    ),
+                  ],
 
                   const SizedBox(height: 24),
 

@@ -116,6 +116,10 @@ class _ManualHealthScreenState extends State<ManualHealthScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: const Text(
           'Укажите здоровье',
           style: TextStyle(

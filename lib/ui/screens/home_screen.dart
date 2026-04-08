@@ -5,11 +5,8 @@ import '../models/mood_entry_ui_model.dart';
 import '../widgets/pixel_circle.dart';
 import '../assets/mood_colors.dart';
 import 'mood_category_screen.dart';
-import 'package:pixelarticons/pixelarticons.dart';
 
 import 'mood_entry_detail_screen.dart';
-import 'analytics_screen.dart';
-import 'profile_screen.dart';
 
 import 'package:provider/provider.dart';
 
@@ -204,7 +201,6 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: const _BottomMenu(),
     );
   }
 }
@@ -285,87 +281,4 @@ class _AddButton extends StatelessWidget {
 }
 
 
-class _BottomMenu extends StatelessWidget {
-  const _BottomMenu();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      color: const Color(0xFF0E1511),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _BottomIcon(
-            icon: Pixel.user,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ProfileScreen()),
-              );
-            },
-          ),
-          _BottomIcon(
-            isActive: true,
-            icon: Pixel.plus,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const MoodCategoryScreen(),
-                ),
-              );
-            },
-          ),
-          _BottomIcon(
-            icon: Pixel.chart,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const AnalyticsScreen(),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BottomIcon extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool isActive;
-
-  const _BottomIcon({
-    required this.icon,
-    required this.onTap,
-    this.isActive = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isActive ? Colors.white : Colors.white30,
-            width: 1.5,
-          ),
-        ),
-        child: Icon(
-          icon,
-          color: Colors.white,
-          size: 24, // 👈 можно 20–24, пиксельно смотрится
-        ),
-      ),
-    );
-  }
-}
 

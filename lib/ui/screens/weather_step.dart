@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -63,14 +64,14 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
       }
 
       if (permission == LocationPermission.denied) {
-        _showError('Доступ к местоположению запрещен');
+        _showError('Доступ к местоположению запрещён');
         setState(() => _loading = false);
         return;
       }
 
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
-      );
+      ).timeout(const Duration(seconds: 5));
 
       final lat = position.latitude;
       final lon = position.longitude;
@@ -83,7 +84,7 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
         repository: _weatherRepository,
         lat: lat,
         lon: lon,
-      );
+      ).timeout(const Duration(seconds: 5));
 
       final cityName = await _getCityNameFromCoordinates(lat, lon);
 
@@ -92,8 +93,12 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
         _showManualInput = false;
       });
 
+    } on TimeoutException {
+      _showError('Нет соединения — введите данные вручную');
+      _navigateToManualInput();
     } catch (e) {
-      _showError('Ошибка при определении погоды: $e');
+      _showError('Проверьте подключение к интернету или введите вручную');
+      _navigateToManualInput();
     }
 
     setState(() => _loading = false);
@@ -102,7 +107,7 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
   Future<String> _getCityNameFromCoordinates(double lat, double lon) async {
     try {
       final url = 'https://api.openweathermap.org/geo/1.0/reverse?lat=$lat&lon=$lon&limit=1&appid=${_weatherRepository.apiKey}';
-      final response = await http.get(Uri.parse(url));
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         final List data = json.decode(response.body);
@@ -134,12 +139,24 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
       _showManualInput = false;
     });
 
-    _draft = await fillWeatherDraft(
-      draft: _draft,
-      repository: _weatherRepository,
-      lat: lat,
-      lon: lon,
-    );
+    try {
+      _draft = await fillWeatherDraft(
+        draft: _draft,
+        repository: _weatherRepository,
+        lat: lat,
+        lon: lon,
+      ).timeout(const Duration(seconds: 5));
+    } on TimeoutException {
+      if (mounted) {
+        _showError('Нет соединения — введите данные вручную');
+        _navigateToManualInput();
+      }
+    } catch (_) {
+      if (mounted) {
+        _showError('Проверьте подключение к интернету или введите вручную');
+        _navigateToManualInput();
+      }
+    }
 
     setState(() => _loading = false);
   }
@@ -448,15 +465,13 @@ class __PixelSearchFieldState extends State<_PixelSearchField> {
         'https://api.openweathermap.org/geo/1.0/direct?q=${Uri.encodeComponent(pattern)}&limit=5&appid=$apiKey';
 
     try {
-      final response = await http.get(Uri.parse(url));
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         final List data = json.decode(response.body);
         return data.cast<Map<String, dynamic>>();
       }
-    } catch (e) {
-      print('Ошибка при поиске городов: $e');
-    }
+    } catch (_) {}
 
     return [];
   }

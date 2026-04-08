@@ -3,10 +3,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/public/flutter_sound_player.dart';
 import 'package:mindall/data/local/static/weather_labels.dart';
+import 'package:provider/provider.dart';
 
 import '../../data/local/app_database.dart';
 import '../../data/local/repositories/local_repository.dart';
 import '../../data/local/tables/context_tags.dart';
+import '../../data/remote/supabase_sync_service.dart';
 import '../../domain/models/health_draft.dart';
 import '../models/mood_entry_ui_model.dart';
 import '../widgets/voice_player.dart';
@@ -99,6 +101,8 @@ class _MoodEntryDetailScreenState extends State<MoodEntryDetailScreen> {
     if (confirmed == true && mounted) {
       final entryId = int.tryParse(widget.entry.id) ?? 0;
       await widget.repository.deleteMoodEntry(entryId);
+      // Удаляем из Supabase чтобы не вернулась при синхронизации
+      context.read<SupabaseSyncService>().deleteEntry(widget.entry.createdAt);
       if (mounted) Navigator.pop(context, true);
     }
   }

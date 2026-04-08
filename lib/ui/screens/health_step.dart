@@ -17,7 +17,7 @@ import '../widgets/bottom_button.dart';
 
 import 'cycle_setup_screen.dart';
 import 'health_content.dart';
-import 'home_container.dart';
+import 'main_nav_scaffold.dart';
 import 'manual_health_screen.dart';
 
 class HealthStepScreen extends StatefulWidget {
@@ -275,7 +275,7 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
 
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const HomeContainer()),
+        MaterialPageRoute(builder: (_) => const MainNavScaffold()),
             (route) => false,
       );
     } catch (e) {
@@ -323,38 +323,39 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
                   else ...[
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Column(
-                        children: [
-                          ElevatedButton(
-                            onPressed: _loading ? null : _detectHealth,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: widget.moodColor,
-                              shape: const RoundedRectangleBorder(
-                                borderRadius: BorderRadius.zero,
-                              ),
-                            ),
-                            child: Text(
-                              health == null ? "Определить" : "Обновить",
-                              style: const TextStyle(
-                                fontFamily: 'DotGothic',
-                                color: Color(0xFF1A1A1A),
-                              ),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _loading ? null : _detectHealth,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: widget.moodColor,
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: BorderRadius.zero,
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          Center(
-                            child: TextButton(
-                              onPressed: _navigateToManualInput,
-                              child: const Text(
-                                "Записать самостоятельно/редактировать",
-                                style: TextStyle(
-                                  fontFamily: 'DotGothic',
-                                  color: Colors.white,
-                                ),
-                              ),
+                          child: Text(
+                            health == null ? "Определить" : "Обновить",
+                            style: const TextStyle(
+                              fontFamily: 'DotGothic',
+                              color: Color(0xFF1A1A1A),
                             ),
                           ),
-                        ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    GestureDetector(
+                      onTap: _navigateToManualInput,
+                      child: const Center(
+                        child: Text(
+                          "Записать самостоятельно / редактировать",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: 'DotGothic',
+                            color: Colors.white54,
+                            fontSize: 13,
+                          ),
+                        ),
                       ),
                     ),
 

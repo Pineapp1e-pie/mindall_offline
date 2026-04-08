@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../domain/models/user_profile.dart';
+import '../../domain/services/notification_service.dart';
 import '../../domain/services/user_profile_service.dart';
+import 'auth_screen.dart';
 import 'cycle_setup_screen.dart';
 
 const _accentGreen  = Color(0xFF83F483);
@@ -27,6 +30,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _trackCycle = false;
   bool _loading = true;
 
+  bool _notifEnabled = false;
+  int _notifHour = 18;
+  int _notifMinute = 0;
+
   @override
   void initState() {
     super.initState();
@@ -39,54 +46,75 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     _email = user.email ?? '';
 
-    // Загружаем профиль из Supabase
+    // Сначала показываем локальный кеш — без сети
+    final localProfile = await _profileService.load();
+    if (localProfile != null) {
+      _username = localProfile.username ?? '';
+      _gender = localProfile.gender;
+      _cycleSettings = localProfile.cycleSettings;
+      _trackCycle = localProfile.cycleSettings != null;
+    }
+
+    _notifEnabled = await _profileService.loadNotificationsEnabled();
+    _notifHour = await _profileService.loadNotificationHour();
+    _notifMinute = await _profileService.loadNotificationMinute();
+
+    if (mounted) setState(() => _loading = false);
+
+    // Фоном синхронизируем с Supabase
+    _syncFromRemote(user);
+  }
+
+  Future<void> _syncFromRemote(User user) async {
     final profile = await _client
         .from('profiles')
         .select()
         .eq('user_id', user.id)
         .maybeSingle();
 
+    String? newUsername;
+    Gender? newGender;
+
     if (profile != null) {
-      _username = profile['username'] as String? ?? '';
+      newUsername = profile['username'] as String? ?? '';
       final genderStr = profile['gender'] as String?;
       if (genderStr != null) {
-        _gender = Gender.values.firstWhere(
+        newGender = Gender.values.firstWhere(
           (g) => g.name == genderStr,
           orElse: () => Gender.preferNotToSay,
         );
-        await _profileService.saveGender(_gender!);
       }
     } else {
-      // Профиля нет — читаем из userMetadata (сохранилось при регистрации)
+      // Профиля нет — читаем из userMetadata и создаём запись
       final meta = user.userMetadata;
       if (meta != null) {
-        _username = meta['username'] as String? ?? '';
+        newUsername = meta['username'] as String? ?? '';
         final genderStr = meta['gender'] as String?;
         if (genderStr != null) {
-          _gender = Gender.values.firstWhere(
+          newGender = Gender.values.firstWhere(
             (g) => g.name == genderStr,
             orElse: () => Gender.preferNotToSay,
           );
         }
-        // Создаём профиль в таблице если его не было
         await _client.from('profiles').upsert({
           'user_id': user.id,
-          'username': _username,
-          'gender': _gender?.name,
+          'username': newUsername,
+          'gender': newGender?.name,
         });
-        if (_gender != null) await _profileService.saveGender(_gender!);
       }
     }
 
-    // Загружаем цикл из SharedPreferences
-    final localProfile = await _profileService.load();
-    if (localProfile != null) {
-      _gender ??= localProfile.gender;
-      _cycleSettings = localProfile.cycleSettings;
-      _trackCycle = localProfile.cycleSettings != null;
-    }
+    // Сохраняем в кеш
+    if (newUsername != null) await _profileService.saveUsername(newUsername);
+    if (newGender != null) await _profileService.saveGender(newGender);
 
-    if (mounted) setState(() => _loading = false);
+    // Обновляем UI если данные изменились
+    if (mounted) {
+      setState(() {
+        if (newUsername != null) _username = newUsername!;
+        if (newGender != null) _gender = newGender;
+      });
+    }
   }
 
   // ──────────────────────────────────────
@@ -146,6 +174,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
       // Меняем пароль
       await _client.auth.updateUser(UserAttributes(password: result.newPassword));
+      TextInput.finishAutofillContext(shouldSave: true);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Пароль обновлён')),
@@ -160,7 +189,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось обновить пароль')),
+          const SnackBar(content: Text('Проверьте подключение к интернету или VPN')),
         );
       }
     }
@@ -171,7 +200,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // ──────────────────────────────────────
 
   Future<void> _deleteAccount() async {
-    final confirm = await showDialog<bool>(
+    final confirm1 = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF18221C),
@@ -195,10 +224,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
-    if (confirm != true) return;
+    if (confirm1 != true) return;
+
+    final confirm2 = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF18221C),
+        title: const Text(
+          'Точно удалить?',
+          style: TextStyle(fontFamily: 'DotGothic', color: Color(0xFFFF6B6B)),
+        ),
+        content: const Text(
+          'Восстановить аккаунт будет невозможно.',
+          style: TextStyle(fontFamily: 'DotGothic', color: Colors.white54, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена', style: TextStyle(color: Colors.white38)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Да, удалить', style: TextStyle(color: Color(0xFFFF6B6B))),
+          ),
+        ],
+      ),
+    );
+    if (confirm2 != true) return;
+
     await _client.auth.signOut();
     if (mounted) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const AuthScreen()),
+        (_) => false,
+      );
     }
   }
 
@@ -209,7 +268,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _signOut() async {
     await _client.auth.signOut();
     if (mounted) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const AuthScreen()),
+        (_) => false,
+      );
     }
   }
 
@@ -228,6 +290,60 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
     if (result != null) setState(() => _cycleSettings = result);
+  }
+
+  // ──────────────────────────────────────
+  // Уведомления
+  // ──────────────────────────────────────
+
+  Future<void> _toggleNotifications(bool value) async {
+    if (value) {
+      final granted = await NotificationService().requestPermission();
+      if (!granted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Разреши уведомления в настройках телефона',
+                style: TextStyle(fontFamily: 'DotGothic'),
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      await NotificationService().scheduleDailyReminder(_notifHour, _notifMinute);
+    } else {
+      await NotificationService().cancelReminder();
+    }
+    setState(() => _notifEnabled = value);
+    await _profileService.saveNotificationSettings(value, _notifHour, _notifMinute);
+  }
+
+  Future<void> _pickNotificationTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: _notifHour, minute: _notifMinute),
+      builder: (context, child) => Theme(
+        data: ThemeData.dark().copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: Colors.white,
+            onPrimary: Color(0xFF0E1511),
+            surface: Color(0xFF18221C),
+            onSurface: Colors.white,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked == null) return;
+
+    setState(() {
+      _notifHour = picked.hour;
+      _notifMinute = picked.minute;
+    });
+    await NotificationService().scheduleDailyReminder(_notifHour, _notifMinute);
+    await _profileService.saveNotificationSettings(_notifEnabled, _notifHour, _notifMinute);
   }
 
   String _genderLabel(Gender? gender) {
@@ -269,10 +385,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: false,
         title: const Text(
           'Профиль',
           style: TextStyle(
@@ -365,13 +478,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _SettingRow(
               label: 'уведомления',
               trailing: Switch(
-                value: false,
-                onChanged: (_) {},
+                value: _notifEnabled,
+                onChanged: _toggleNotifications,
                 activeColor: Colors.white,
                 inactiveThumbColor: Colors.white24,
                 inactiveTrackColor: Colors.white12,
               ),
             ),
+            if (_notifEnabled)
+              _SettingRow(
+                label: 'время',
+                value:
+                    '${_notifHour.toString().padLeft(2, '0')}:${_notifMinute.toString().padLeft(2, '0')}',
+                onTap: _pickNotificationTime,
+              ),
 
             // ── Цикл (только для женщин) ───────────
             if (isFemale) ...[
@@ -744,14 +864,15 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
         'Сменить пароль',
         style: TextStyle(fontFamily: 'DotGothic', color: Colors.white, fontSize: 16),
       ),
-      content: Column(
+      content: AutofillGroup(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _field(_oldCtrl, 'текущий пароль'),
+          _field(_oldCtrl, 'текущий пароль', null),
           const SizedBox(height: 16),
-          _field(_newCtrl, 'новый пароль'),
+          _field(_newCtrl, 'новый пароль', AutofillHints.newPassword),
           const SizedBox(height: 16),
-          _field(_confirmCtrl, 'повтори новый'),
+          _field(_confirmCtrl, 'повтори новый', null),
           if (_error != null) ...[
             const SizedBox(height: 8),
             Text(
@@ -764,6 +885,7 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
             ),
           ],
         ],
+        ),
       ),
       actions: [
         TextButton(
@@ -778,10 +900,11 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
     );
   }
 
-  Widget _field(TextEditingController ctrl, String hint) {
+  Widget _field(TextEditingController ctrl, String hint, String? autofillHint) {
     return TextField(
       controller: ctrl,
       obscureText: true,
+      autofillHints: autofillHint != null ? [autofillHint] : const [],
       style: const TextStyle(fontFamily: 'DotGothic', color: Colors.white, fontSize: 14),
       decoration: InputDecoration(
         hintText: hint,
