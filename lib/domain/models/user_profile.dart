@@ -14,10 +14,12 @@ class CycleSettings {
 
 class UserProfile {
   final Gender gender;
+  final String? username;
   final CycleSettings? cycleSettings;
 
   const UserProfile({
     required this.gender,
+    this.username,
     this.cycleSettings,
   });
 
