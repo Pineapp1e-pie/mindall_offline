@@ -33,6 +33,15 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   int get schemaVersion => 1;
+
+  Future<void> clearUserData() async {
+    await delete(moodEntryTags).go();
+    await delete(contextDetails).go();
+    await delete(weatherData).go();
+    await delete(healthData).go();
+    await delete(dailyMoodStats).go();
+    await delete(moodEntries).go();
+  }
 }
 
 LazyDatabase _openConnection() {

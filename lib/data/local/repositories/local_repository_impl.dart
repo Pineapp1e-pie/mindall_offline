@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:mindall/data/local/tables/health_data.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../domain/models/mood_entry_with_mood.dart';
 import '../../../domain/models/weather_draft.dart';
@@ -16,6 +17,12 @@ class LocalRepositoryImpl implements LocalRepository {
   final AppDatabase db;
 
   LocalRepositoryImpl(this.db);
+
+  @override
+  Future<void> clearUserData() => db.clearUserData();
+
+  String get _userId =>
+      Supabase.instance.client.auth.currentUser?.id ?? '';
 
   // ---------- Mood entries ----------
 
@@ -51,7 +58,8 @@ class LocalRepositoryImpl implements LocalRepository {
         db.moods.id.equalsExp(db.moodEntries.moodId),
       ),
     ])
-      ..where(db.moodEntries.createdAt.isBetweenValues(start, end));
+      ..where(db.moodEntries.createdAt.isBetweenValues(start, end) &
+          db.moodEntries.userId.equals(_userId));
 
     final rows = await query.get();
 
@@ -75,7 +83,8 @@ class LocalRepositoryImpl implements LocalRepository {
         db.moods.id.equalsExp(db.moodEntries.moodId),
       ),
     ])
-      ..where(db.moodEntries.createdAt.isBetweenValues(start, end));
+      ..where(db.moodEntries.createdAt.isBetweenValues(start, end) &
+          db.moodEntries.userId.equals(_userId));
 
     return query.watch().map((rows) => rows.map((row) {
           return MoodEntryWithMood(
@@ -93,7 +102,8 @@ class LocalRepositoryImpl implements LocalRepository {
     return (db.select(db.moodEntries)
       ..where((m) =>
       m.createdAt.isBiggerOrEqualValue(from) &
-      m.createdAt.isSmallerOrEqualValue(to))
+      m.createdAt.isSmallerOrEqualValue(to) &
+      m.userId.equals(_userId))
       ..orderBy([
             (m) => OrderingTerm(expression: m.createdAt),
       ]))
@@ -167,7 +177,7 @@ class LocalRepositoryImpl implements LocalRepository {
       /// 1. mood
       final entryId = await db.into(db.moodEntries).insert(
         MoodEntriesCompanion.insert(
-          userId: "1",
+          userId: _userId,
           moodId: draft.moodId,
         ),
       );
@@ -269,7 +279,8 @@ class LocalRepositoryImpl implements LocalRepository {
           db.weatherData,
           db.weatherData.moodEntryId.equalsExp(db.moodEntries.id)),
     ])
-      ..where(db.moodEntries.createdAt.isBetweenValues(from, to));
+      ..where(db.moodEntries.createdAt.isBetweenValues(from, to) &
+          db.moodEntries.userId.equals(_userId));
 
     final rows = await query.get();
     return rows.map((row) {
@@ -303,7 +314,8 @@ class LocalRepositoryImpl implements LocalRepository {
     final query = db.select(db.moodEntries).join([
       innerJoin(db.moods, db.moods.id.equalsExp(db.moodEntries.moodId)),
     ])
-      ..where(db.moodEntries.createdAt.isBetweenValues(from, to))
+      ..where(db.moodEntries.createdAt.isBetweenValues(from, to) &
+          db.moodEntries.userId.equals(_userId))
       ..orderBy([OrderingTerm(expression: db.moodEntries.createdAt)]);
 
     final rows = await query.get();

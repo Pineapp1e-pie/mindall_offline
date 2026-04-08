@@ -75,6 +75,8 @@ abstract class LocalRepository {
   Future<MoodEntryDraft> getMoodEntryAsDraft(int entryId);
 
   Future<void> updateFullEntry(int entryId, MoodEntryDraft draft);
+
+  Future<void> clearUserData();
 }
 
 
