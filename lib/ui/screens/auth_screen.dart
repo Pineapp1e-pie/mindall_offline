@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../domain/models/user_profile.dart';
 import '../../domain/services/user_profile_service.dart';
+import 'main_nav_scaffold.dart';
 
 const _accentGreen  = Color(0xFF83F483); // Гармония
 const _accentYellow = Color(0xFFFFEB89); // Счастье
@@ -64,22 +68,42 @@ class _AuthScreenState extends State<AuthScreen> {
     try {
       final supabase = Supabase.instance.client;
 
+      const timeout = Duration(seconds: 5);
       if (_isLogin) {
-        await supabase.auth.signInWithPassword(email: email, password: password);
+        await supabase.auth
+            .signInWithPassword(email: email, password: password)
+            .timeout(timeout);
+        TextInput.finishAutofillContext(shouldSave: true);
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const MainNavScaffold()),
+            (_) => false,
+          );
+        }
       } else {
         // Сохраняем имя и пол в метаданных — работает без сессии
         final response = await supabase.auth.signUp(
           email: email,
           password: password,
+          emailRedirectTo: 'mindall://login-callback',
           data: {
             'username': username,
             'gender': _gender!.name,
           },
-        );
+        ).timeout(timeout);
 
         if (response.session != null && response.user != null) {
           // Подтверждение email отключено — сразу входим
           await _saveProfile(response.user!.id, username, _gender!);
+          TextInput.finishAutofillContext(shouldSave: true);
+          await Future.delayed(const Duration(milliseconds: 300));
+          if (mounted) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const MainNavScaffold()),
+              (_) => false,
+            );
+          }
         } else {
           // Нужно подтверждение — показываем сообщение
           if (mounted) setState(() => _registered = true);
@@ -88,7 +112,7 @@ class _AuthScreenState extends State<AuthScreen> {
     } on AuthException catch (e) {
       setState(() => _error = _mapError(e.message));
     } catch (_) {
-      setState(() => _error = 'Что-то пошло не так');
+      setState(() => _error = 'Проверьте подключение к интернету или VPN');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -103,12 +127,46 @@ class _AuthScreenState extends State<AuthScreen> {
     await UserProfileService().saveGender(gender);
   }
 
+  Future<void> _forgotPassword() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      setState(() => _error = 'Введи email выше');
+      return;
+    }
+    setState(() { _loading = true; _error = null; });
+    try {
+      await Supabase.instance.client.auth
+          .resetPasswordForEmail(email, redirectTo: 'mindall://reset-password')
+          .timeout(const Duration(seconds: 10));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Письмо со сбросом пароля отправлено')),
+        );
+      }
+    } on AuthException catch (e) {
+      setState(() => _error = _mapError(e.message));
+    } on TimeoutException {
+      setState(() => _error = 'Сервер не отвечает — попробуй позже');
+    } catch (e) {
+      final msg = e.toString();
+      if (msg.contains('SocketException') || msg.contains('network')) {
+        setState(() => _error = 'Проверьте подключение к интернету');
+      } else {
+        setState(() => _error = _mapError(msg));
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   String _mapError(String message) {
     if (message.contains('Invalid login credentials')) return 'Неверный email или пароль';
     if (message.contains('Email not confirmed')) return 'Подтверди email — письмо отправлено';
     if (message.contains('User already registered')) return 'Этот email уже зарегистрирован';
     if (message.contains('Password should be')) return 'Пароль минимум 6 символов';
-    return message;
+    if (message.contains('security purposes') || message.contains('after')) return 'Подожди немного перед повторной отправкой';
+    if (message.contains('rate') || message.contains('limit')) return 'Слишком много попыток — подожди';
+    return message.isNotEmpty ? message : 'Проверьте подключение к интернету или VPN';
   }
 
   Widget _emailSentScreen() {
@@ -255,21 +313,45 @@ class _AuthScreenState extends State<AuthScreen> {
                 const SizedBox(height: 24),
               ],
 
-              // Email
-              _PixelField(
-                controller: _emailController,
-                hint: 'email',
-                keyboardType: TextInputType.emailAddress,
+              AutofillGroup(
+                child: Column(
+                  children: [
+                    _PixelField(
+                      controller: _emailController,
+                      hint: 'email',
+                      keyboardType: TextInputType.emailAddress,
+                      autofillHints: const [AutofillHints.email],
+                    ),
+                    const SizedBox(height: 16),
+                    _PixelField(
+                      controller: _passwordController,
+                      hint: 'пароль',
+                      obscure: true,
+                      autofillHints: _isLogin
+                          ? const [AutofillHints.password]
+                          : const [AutofillHints.newPassword],
+                    ),
+                  ],
+                ),
               ),
 
-              const SizedBox(height: 16),
-
-              // Пароль
-              _PixelField(
-                controller: _passwordController,
-                hint: 'пароль',
-                obscure: true,
-              ),
+              if (_isLogin) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: GestureDetector(
+                    onTap: _loading ? null : _forgotPassword,
+                    child: const Text(
+                      'забыл пароль?',
+                      style: TextStyle(
+                        fontFamily: 'DotGothic',
+                        fontSize: 12,
+                        color: Colors.white38,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
 
               const SizedBox(height: 12),
 
@@ -365,12 +447,14 @@ class _PixelField extends StatelessWidget {
   final String hint;
   final bool obscure;
   final TextInputType keyboardType;
+  final List<String>? autofillHints;
 
   const _PixelField({
     required this.controller,
     required this.hint,
     this.obscure = false,
     this.keyboardType = TextInputType.text,
+    this.autofillHints,
   });
 
   @override
@@ -379,6 +463,7 @@ class _PixelField extends StatelessWidget {
       controller: controller,
       obscureText: obscure,
       keyboardType: keyboardType,
+      autofillHints: autofillHints,
       style: const TextStyle(
         fontFamily: 'DotGothic',
         color: Colors.white,
