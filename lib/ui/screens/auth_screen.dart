@@ -1,3 +1,4 @@
+import 'package:mindall/ui/app_route.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../domain/models/user_profile.dart';
+import '../../domain/services/notification_service.dart';
 import '../../domain/services/user_profile_service.dart';
 import 'main_nav_scaffold.dart';
 
@@ -74,10 +76,11 @@ class _AuthScreenState extends State<AuthScreen> {
             .signInWithPassword(email: email, password: password)
             .timeout(timeout);
         TextInput.finishAutofillContext(shouldSave: true);
+        await NotificationService().loadSettingsFromRemote();
         await Future.delayed(const Duration(milliseconds: 300));
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const MainNavScaffold()),
+            AppRoute(page: const MainNavScaffold()),
             (_) => false,
           );
         }
@@ -86,7 +89,7 @@ class _AuthScreenState extends State<AuthScreen> {
         final response = await supabase.auth.signUp(
           email: email,
           password: password,
-          emailRedirectTo: 'mindall://login-callback',
+          emailRedirectTo: 'mindall://email-confirm',
           data: {
             'username': username,
             'gender': _gender!.name,
@@ -100,7 +103,7 @@ class _AuthScreenState extends State<AuthScreen> {
           await Future.delayed(const Duration(milliseconds: 300));
           if (mounted) {
             Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(builder: (_) => const MainNavScaffold()),
+              AppRoute(page: const MainNavScaffold()),
               (_) => false,
             );
           }

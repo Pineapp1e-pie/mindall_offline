@@ -5,12 +5,14 @@ class HealthContent extends StatelessWidget {
   final HealthDraft health;
   final String source;
   final Color moodColor;
+  final bool showCycle;
 
   const HealthContent({
     super.key,
     required this.health,
     required this.source,
     required this.moodColor,
+    this.showCycle = false,
   });
 
   @override
@@ -23,7 +25,14 @@ class HealthContent extends StatelessWidget {
         ? "${health.stepsAmount}"
         : "НЕ УКАЗАНО";
 
-    final cycle = health.cyclePhase?.name ?? "НЕ УКАЗАНО";
+    final cycle = health.cyclePhase != null
+        ? switch (health.cyclePhase!) {
+            CyclePhase.menstruation => 'Менструация',
+            CyclePhase.follicular   => 'Фолликулярная',
+            CyclePhase.ovulation    => 'Овуляция',
+            CyclePhase.luteal       => 'Лютеиновая',
+          }
+        : 'НЕ УКАЗАНО';
 
     return Column(
       children: [
@@ -44,8 +53,10 @@ class HealthContent extends StatelessWidget {
               _row("СОН", sleep),
               const SizedBox(height: 20),
               _row("ШАГИ", steps),
-              const SizedBox(height: 20),
-              _row("ЦИКЛ", cycle),
+              if (showCycle) ...[
+                const SizedBox(height: 20),
+                _row("ЦИКЛ", cycle),
+              ],
             ],
           ),
         ),

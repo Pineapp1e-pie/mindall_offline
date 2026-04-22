@@ -1,4 +1,6 @@
+import 'package:mindall/ui/app_route.dart';
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/public/flutter_sound_player.dart';
@@ -100,10 +102,24 @@ class _MoodEntryDetailScreenState extends State<MoodEntryDetailScreen> {
 
     if (confirmed == true && mounted) {
       final entryId = int.tryParse(widget.entry.id) ?? 0;
+      final entryDate = widget.entry.createdAt;
+      final syncService = context.read<SupabaseSyncService>();
+
+      // 1. Удаляем локально
       await widget.repository.deleteMoodEntry(entryId);
-      // Удаляем из Supabase чтобы не вернулась при синхронизации
-      context.read<SupabaseSyncService>().deleteEntry(widget.entry.createdAt);
+      final remaining = await widget.repository.getMoodEntriesForDay(entryDate);
+      if (remaining.isEmpty) {
+        await widget.repository.deleteHealthDataForDay(entryDate);
+        await widget.repository.deleteDailyMoodStatForDay(entryDate);
+        await syncService.queueHealthDeletion(entryDate);
+      }
+      await syncService.queueEntryDeletion(widget.entry.createdAt);
+
+      // 2. Сразу уходим — пользователь не ждёт сеть
       if (mounted) Navigator.pop(context, true);
+
+      // 3. Пробуем удалить из Supabase в фоне (очередь сбросится при syncAll если упадёт)
+      unawaited(syncService.flushPendingDeletions());
     }
   }
 
@@ -114,8 +130,7 @@ class _MoodEntryDetailScreenState extends State<MoodEntryDetailScreen> {
 
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => MoodContextScreen(
+      AppRoute(page: MoodContextScreen(
           draft: draft,
           moodName: widget.entry.moodName,
           moodColor: widget.entry.color,
@@ -652,3 +667,4 @@ class _HealthBlock extends StatelessWidget {
     );
   }
 }
+

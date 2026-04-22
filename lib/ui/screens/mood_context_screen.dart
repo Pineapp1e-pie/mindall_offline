@@ -1,3 +1,4 @@
+import 'package:mindall/ui/app_route.dart';
 import 'package:drift/drift.dart' show Value, BooleanExpressionOperators;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -248,8 +249,7 @@ class MoodContextScreen extends StatefulWidget {
   void _goToMoodNote() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => MoodNoteScreen(
+      AppRoute(page: MoodNoteScreen(
           draft: _draft,
           moodName: widget.moodName,
           moodColor: widget.moodColor,

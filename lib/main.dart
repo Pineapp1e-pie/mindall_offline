@@ -1,11 +1,13 @@
+import 'package:mindall/ui/app_route.dart';
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
-import 'package:workmanager/workmanager.dart';
 
 import 'data/local/app_database.dart';
 import 'data/local/repositories/local_repository.dart';
@@ -13,8 +15,8 @@ import 'data/local/repositories/local_repository_impl.dart';
 import 'data/local/static/moods_initializer.dart';
 import 'data/local/static/context_tags_seed.dart';
 import 'background/step_sync_worker.dart';
+import 'domain/services/achievement_service.dart';
 import 'domain/services/notification_service.dart';
-import 'domain/services/user_profile_service.dart';
 
 import 'ui/screens/main_nav_scaffold.dart';
 import 'ui/screens/auth_screen.dart';
@@ -32,6 +34,10 @@ void main() async {
 
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+  await Firebase.initializeApp();
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
   await Supabase.initialize(
     url: 'https://bcvyypjjobivgjtswxdi.supabase.co',
     anonKey: 'sb_publishable_hoH2DPUJVXlIDjK25DEyrw_yU5JJ_8b',
@@ -39,63 +45,36 @@ void main() async {
 
   final database = AppDatabase();
   final repository = LocalRepositoryImpl(database);
+  final achievementService = AchievementService(repository);
   final syncService = SupabaseSyncService(database);
 
   await MoodsInitializer(database).init();
   await ContextTagsInitializer(database).init();
 
-  // Инициализируем WorkManager и планируем ежедневную синхронизацию шагов
-  await Workmanager().initialize(callbackDispatcher);
-  _scheduleStepSync();
+  // Инициализируем WorkManager для синхронизации шагов
+  await initWorkManager();
 
-  // Инициализируем уведомления и восстанавливаем расписание
+  // Инициализируем FCM-уведомления
   await NotificationService().init();
-  await _restoreNotificationSchedule();
+
+  // Регистрируем FCM-токен если пользователь уже залогинен (не блокируем запуск)
+  if (Supabase.instance.client.auth.currentSession != null) {
+    NotificationService().registerToken();
+  }
 
   runApp(
     MultiProvider(
       providers: [
         Provider<LocalRepository>(create: (_) => repository),
         Provider<SupabaseSyncService>(create: (_) => syncService),
+        Provider<AchievementService>(create: (_) => achievementService),
       ],
       child: const MyApp(),
     ),
   );
 }
 
-/// Планирует одноразовую задачу на сегодня в 23:59.
-/// После выполнения задача перепланирует себя на следующие сутки.
-void _scheduleStepSync() {
-  final now = DateTime.now();
-  final targetTime = DateTime(now.year, now.month, now.day, 23, 30);
 
-  // Если 23:59 уже прошло — планируем на завтра
-  final delay = targetTime.isAfter(now)
-      ? targetTime.difference(now)
-      : targetTime.add(const Duration(days: 1)).difference(now);
-
-  Workmanager().registerOneOffTask(
-    'stepSync_${now.year}_${now.month}_${now.day}', // уникальное имя каждый день
-    stepSyncTaskName, // 'stepSync2330Task'
-    initialDelay: delay,
-    constraints: Constraints(
-      networkType: NetworkType.notRequired,
-    ),
-    existingWorkPolicy: ExistingWorkPolicy.replace,
-  );
-
-  print('Синхронизация шагов запланирована через ${delay.inMinutes} минут');
-}
-
-/// Восстанавливает расписание уведомлений после перезапуска приложения.
-Future<void> _restoreNotificationSchedule() async {
-  final profileService = UserProfileService();
-  final enabled = await profileService.loadNotificationsEnabled();
-  if (!enabled) return;
-  final hour = await profileService.loadNotificationHour();
-  final minute = await profileService.loadNotificationMinute();
-  await NotificationService().scheduleDailyReminder(hour, minute);
-}
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
@@ -131,7 +110,7 @@ class _MyAppState extends State<MyApp> {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           _navigatorKey.currentState?.pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const ResetPasswordScreen()),
+            AppRoute(page: const ResetPasswordScreen()),
             (_) => false,
           );
         });
@@ -140,6 +119,8 @@ class _MyAppState extends State<MyApp> {
 
       if (!wasLoggedIn && data.session != null) {
         context.read<SupabaseSyncService>().syncAll();
+        NotificationService().registerToken();
+        NotificationService().loadSettingsFromRemote();
       }
     });
 
@@ -174,18 +155,14 @@ class _MyAppState extends State<MyApp> {
     try {
       final refreshToken = uri.queryParameters['refresh_token'];
 
+
       if (refreshToken != null) {
-        // Токены в query params — устаревший implicit flow
         await Supabase.instance.client.auth.setSession(refreshToken);
-        // Навигация обрабатывается в onAuthStateChange по типу события
         return;
       }
 
-      // PKCE flow — токены в фрагменте или code в query params
       await Supabase.instance.client.auth.getSessionFromUrl(uri);
-      // Навигация обрабатывается в onAuthStateChange по типу события
     } catch (_) {
-      // игнорируем ошибки
     }
   }
 

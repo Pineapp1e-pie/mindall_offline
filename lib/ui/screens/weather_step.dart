@@ -1,3 +1,4 @@
+import 'package:mindall/ui/app_route.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -173,8 +174,7 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
   void _saveAndContinue() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => HealthStepScreen(
+      AppRoute(page: HealthStepScreen(
           draft: _draft,
           moodColor: widget.moodColor,
         ),
@@ -185,12 +185,10 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
   void _navigateToManualInput() async {
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => ManualWeatherScreen(
-          moodColor: widget.moodColor,
-          initialWeather: _draft.weather,
-        ),
-      ),
+      AppRoute(page: ManualWeatherScreen(
+        moodColor: widget.moodColor,
+        initialWeather: _draft.weather,
+      )),
     );
 
     if (result != null) {

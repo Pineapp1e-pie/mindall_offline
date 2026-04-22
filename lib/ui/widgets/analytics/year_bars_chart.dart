@@ -27,14 +27,11 @@ class _YearBarsChartState extends State<YearBarsChart> {
 
   @override
   Widget build(BuildContext context) {
-    double maxTotal = 1.0;
-    for (final d in widget.data) {
-      if (d.total > maxTotal) maxTotal = d.total.toDouble();
-    }
-
     final fontSize = 8.0 + 2.0 * (_scale - 1.0);
     final barWidth = (18.0 * _scale).clamp(18.0, 56.0);
 
+    // 100% stacked: все столбики одной высоты (1.0),
+    // сегменты — доли квадрантов внутри месяца.
     final groups = widget.data.asMap().entries.map((e) {
       final idx = e.key;
       final d = e.value;
@@ -43,7 +40,7 @@ class _YearBarsChartState extends State<YearBarsChart> {
           x: idx,
           barRods: [
             BarChartRodData(
-              toY: 1,
+              toY: 1.0,
               color: Colors.white12,
               width: barWidth,
               borderRadius: BorderRadius.zero,
@@ -51,22 +48,22 @@ class _YearBarsChartState extends State<YearBarsChart> {
           ],
         );
       }
-      final na = d.negativeActive.toDouble();
-      final pa = d.positiveActive.toDouble();
-      final nc = d.negativeCalm.toDouble();
+      final t = d.total.toDouble();
+      final na = d.negativeActive / t;
+      final pa = d.positiveActive / t;
+      final nc = d.negativeCalm / t;
       return BarChartGroupData(
         x: idx,
         barRods: [
           BarChartRodData(
-            toY: d.total.toDouble(),
+            toY: 1.0,
             width: barWidth,
             borderRadius: BorderRadius.zero,
             rodStackItems: [
               BarChartRodStackItem(0, na, _colorNegActive),
               BarChartRodStackItem(na, na + pa, _colorPosActive),
               BarChartRodStackItem(na + pa, na + pa + nc, _colorNegCalm),
-              BarChartRodStackItem(
-                  na + pa + nc, d.total.toDouble(), _colorPosCalm),
+              BarChartRodStackItem(na + pa + nc, 1.0, _colorPosCalm),
             ],
           ),
         ],
@@ -89,7 +86,7 @@ class _YearBarsChartState extends State<YearBarsChart> {
                   BarChartData(
                     barGroups: groups,
                     alignment: BarChartAlignment.spaceAround,
-                    maxY: maxTotal * 1.2,
+                    maxY: 1.0,
                     gridData: FlGridData(
                       show: true,
                       drawVerticalLine: false,

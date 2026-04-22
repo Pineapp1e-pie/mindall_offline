@@ -1,3 +1,4 @@
+import 'package:mindall/ui/app_route.dart';
 // mood_note_screen.dart
 
 import 'dart:async';
@@ -222,8 +223,7 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
   void _goToWeather() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => WeatherStepScreen(
+      AppRoute(page: WeatherStepScreen(
           draft: _draft,
           moodColor: widget.moodColor,
         ),

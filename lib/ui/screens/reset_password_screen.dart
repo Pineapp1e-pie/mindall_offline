@@ -1,3 +1,4 @@
+import 'package:mindall/ui/app_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -53,7 +54,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const AuthScreen()),
+          AppRoute(page: const AuthScreen()),
           (_) => false,
         );
         ScaffoldMessenger.of(context).showSnackBar(

@@ -1,3 +1,4 @@
+import 'package:mindall/ui/app_route.dart';
 // import 'package:flutter/cupertino.dart';
 // import 'package:flutter/material.dart';
 //
@@ -384,8 +385,7 @@ class _MoodMatrixScreenState extends State<MoodMatrixScreen> {
                         final draft = MoodEntryDraft(moodId: _selectedMood!.id);
                         Navigator.push(
                           context,
-                          MaterialPageRoute(
-                            builder: (_) => MoodContextScreen(
+                          AppRoute(page: MoodContextScreen(
                               draft: draft,
                               moodName: _selectedMood!.name,
                               moodColor: colorForMood(_selectedMood!.name),

@@ -1,11 +1,18 @@
+import 'dart:typed_data';
+
+import 'package:mindall/ui/app_route.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../data/local/repositories/local_repository.dart';
 import '../../domain/models/chart_models.dart';
 import '../../domain/models/mood_entry_with_mood.dart';
 import '../../domain/services/analytics_service.dart';
+import '../../domain/services/export_service.dart';
+import '../../domain/services/user_profile_service.dart';
 import '../assets/mood_colors.dart';
 import '../models/mood_entry_ui_model.dart';
 import '../widgets/analytics/chart_shared.dart';
@@ -31,14 +38,26 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   DateTime _selectedDay = DateTime.now();
   DateTime? _chartSelectedDay;
   late AnalyticsService _service;
+  late ExportService _exportService;
   bool _initialized = false;
+  bool _exporting = false;
+  bool _trackCycle = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_initialized) {
       _service = AnalyticsService(context.read<LocalRepository>());
+      _exportService = ExportService(context.read<LocalRepository>());
       _initialized = true;
+      _loadCycleTracking();
+    }
+  }
+
+  Future<void> _loadCycleTracking() async {
+    final profile = await UserProfileService().load();
+    if (mounted && profile?.cycleSettings != null) {
+      setState(() => _trackCycle = true);
     }
   }
 
@@ -360,6 +379,25 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                               size: 20),
                         ),
                         const Spacer(),
+                        if (_exporting)
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              color: Colors.white38,
+                              strokeWidth: 1.5,
+                            ),
+                          )
+                        else
+                          GestureDetector(
+                            onTap: _showExportSheet,
+                            child: const Icon(
+                              Icons.ios_share,
+                              color: Colors.white38,
+                              size: 18,
+                            ),
+                          ),
+                        const SizedBox(width: 12),
                         GestureDetector(
                           onTap: () => _showChartHelp(context),
                           child: Container(
@@ -459,11 +497,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     title: 'Настроение : Погода',
                     onTap: () => _openCorrelation(CorrelationType.weather),
                   ),
-                  const SizedBox(height: 8),
-                  _CorrelationCard(
-                    title: 'Цикл : Настроение',
-                    onTap: () => _openCorrelation(CorrelationType.cycle),
-                  ),
+                  if (_trackCycle) ...[
+                    const SizedBox(height: 8),
+                    _CorrelationCard(
+                      title: 'Цикл : Настроение',
+                      onTap: () => _openCorrelation(CorrelationType.cycle),
+                    ),
+                  ],
                   const SizedBox(height: 32),
                 ],
               ),
@@ -474,11 +514,185 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
+  // ──────────────────────────────────────────────────
+  // Экспорт
+  // ──────────────────────────────────────────────────
+
+  void _showExportSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        margin: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF18221C),
+          border: Border.all(color: Colors.white24, width: 1.5),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(24, 20, 24, 12),
+              child: Text(
+                'Экспорт',
+                style: TextStyle(
+                  fontFamily: 'DotGothic',
+                  fontSize: 16,
+                  color: Colors.white,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            _ExportOption(
+              icon: Icons.table_chart_outlined,
+              title: 'Записи → Excel (.xlsx)',
+              subtitle: 'Дата, время, настроение, заметки',
+              onTap: () {
+                Navigator.pop(context);
+                _exportExcel();
+              },
+            ),
+            if (_period == _Period.day)
+              _ExportOption(
+                icon: Icons.today_outlined,
+                title: 'День → PDF',
+                subtitle: 'Записи, теги, контекст, итог дня',
+                onTap: () {
+                  Navigator.pop(context);
+                  _exportDayPdf();
+                },
+              ),
+            if (_period == _Period.week)
+              _ExportOption(
+                icon: Icons.calendar_view_week_outlined,
+                title: 'Неделя → PDF',
+                subtitle: 'График, квадранты, инсайты',
+                onTap: () {
+                  Navigator.pop(context);
+                  _exportPeriodPdf();
+                },
+              ),
+            if (_period == _Period.month)
+              _ExportOption(
+                icon: Icons.calendar_month_outlined,
+                title: 'Месяц → PDF',
+                subtitle: 'График, квадранты, топ настроений',
+                onTap: () {
+                  Navigator.pop(context);
+                  _exportPeriodPdf();
+                },
+              ),
+            if (_period == _Period.year)
+              _ExportOption(
+                icon: Icons.bar_chart_outlined,
+                title: 'Год → PDF',
+                subtitle: 'Статистика по месяцам, итоги года',
+                onTap: () {
+                  Navigator.pop(context);
+                  _exportPeriodPdf();
+                },
+              ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportExcel() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final path = await _exportService.exportEntriesToExcel(
+        _range.start,
+        _range.end,
+      );
+      await Share.shareXFiles(
+        [XFile(path, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')],
+        subject: 'Записи настроения',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Ошибка экспорта: $e',
+              style: const TextStyle(fontFamily: 'DotGothic'),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  Future<void> _exportPeriodPdf() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final bytes = await _exportService.exportAnalyticsToPdfBytes(
+        _range.start,
+        _range.end,
+        _rangeLabel,
+        isYear: _period == _Period.year,
+        trackCycle: _trackCycle,
+      );
+      final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay);
+      await Printing.sharePdf(
+        bytes: Uint8List.fromList(bytes),
+        filename: 'mindall_${_period.name}_$dateStr.pdf',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Ошибка экспорта: $e',
+              style: const TextStyle(fontFamily: 'DotGothic'),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  Future<void> _exportDayPdf() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final bytes = await _exportService.exportDayToPdfBytes(
+        _selectedDay,
+        trackCycle: _trackCycle,
+      );
+      final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay);
+      await Printing.sharePdf(
+        bytes: Uint8List.fromList(bytes),
+        filename: 'mindall_day_$dateStr.pdf',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Ошибка экспорта: $e',
+              style: const TextStyle(fontFamily: 'DotGothic'),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
   void _openCorrelation(CorrelationType type) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => CorrelationScreen(type: type),
+      AppRoute(page: CorrelationScreen(type: type),
       ),
     );
   }
@@ -679,8 +893,7 @@ class _EntriesSection extends StatelessWidget {
                   color: color,
                   onTap: () => Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => MoodEntryDetailScreen(
+                    AppRoute(page: MoodEntryDetailScreen(
                         entry: uiModel,
                         repository: repository,
                       ),
@@ -813,6 +1026,68 @@ class _SectionLabel extends StatelessWidget {
 }
 
 // ──────────────────────────────────────────────────
+// Export option row
+// ──────────────────────────────────────────────────
+
+class _ExportOption extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _ExportOption({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: Colors.white12)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.white54, size: 20),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontFamily: 'DotGothic',
+                      fontSize: 14,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontFamily: 'DotGothic',
+                      fontSize: 11,
+                      color: Colors.white38,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white24, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────
 // Bottom nav
 // ──────────────────────────────────────────────────
 
@@ -835,7 +1110,7 @@ class _BottomNav extends StatelessWidget {
             isActive: true,
             onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const MoodCategoryScreen()),
+              AppRoute(page: const MoodCategoryScreen()),
             ),
           ),
           _NavIcon(

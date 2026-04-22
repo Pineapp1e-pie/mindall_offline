@@ -23,6 +23,13 @@ class ManualHealthScreen extends StatefulWidget {
   State<ManualHealthScreen> createState() => _ManualHealthScreenState();
 }
 
+String _cyclePhaseLabel(CyclePhase phase) => switch (phase) {
+      CyclePhase.menstruation => 'Менструация',
+      CyclePhase.follicular   => 'Фолликулярная',
+      CyclePhase.ovulation    => 'Овуляция',
+      CyclePhase.luteal       => 'Лютеиновая',
+    };
+
 class _ManualHealthScreenState extends State<ManualHealthScreen> {
 
   final _sleepHoursController = TextEditingController();
@@ -42,7 +49,7 @@ class _ManualHealthScreenState extends State<ManualHealthScreen> {
     _cycleTags = CyclePhase.values.map((phase) {
       return ContextTag(
         id: phase.index + _cycleOffset,
-        name: phase.name,
+        name: _cyclePhaseLabel(phase),
         type: ContextTagType.activity,
         isCustom: false,
         isActive: false,

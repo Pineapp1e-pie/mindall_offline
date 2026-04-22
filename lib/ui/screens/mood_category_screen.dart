@@ -1,3 +1,4 @@
+import 'package:mindall/ui/app_route.dart';
 import 'package:flutter/material.dart';
 import '../../data/local/static/moods.dart';
 import '../assets/category_colors.dart';
@@ -49,8 +50,7 @@ class MoodCategoryScreen extends StatelessWidget {
                   onTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => MoodMatrixScreen(category: category),
+                      AppRoute(page: MoodMatrixScreen(category: category),
                       ),
                     );
                   },

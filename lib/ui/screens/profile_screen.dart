@@ -1,10 +1,19 @@
+import 'dart:math';
+
+import 'package:mindall/ui/app_route.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/local/repositories/local_repository.dart';
+import '../../domain/models/achievement.dart';
 import '../../domain/models/user_profile.dart';
 import '../../domain/services/notification_service.dart';
 import '../../domain/services/user_profile_service.dart';
+import '../widgets/achievement_popup.dart';
 import 'auth_screen.dart';
 import 'cycle_setup_screen.dart';
 
@@ -34,6 +43,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _notifHour = 18;
   int _notifMinute = 0;
 
+  List<Achievement> _achievements = kAchievements.toList();
+
   @override
   void initState() {
     super.initState();
@@ -59,10 +70,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _notifHour = await _profileService.loadNotificationHour();
     _notifMinute = await _profileService.loadNotificationMinute();
 
+    await _loadAchievements(user.id);
+
     if (mounted) setState(() => _loading = false);
 
     // Фоном синхронизируем с Supabase
     _syncFromRemote(user);
+  }
+
+  Future<void> _loadAchievements(String userId) async {
+    final repo = context.read<LocalRepository>();
+    final dbRows = await repo.getAllAchievements(userId);
+    if (!mounted) return;
+    setState(() {
+      _achievements = kAchievements.map((catalog) {
+        final row = dbRows
+            .where((r) => r.achievementId == catalog.id)
+            .firstOrNull;
+        if (row == null) return catalog;
+        return catalog.copyWith(
+          isAchieved: row.isAchieved,
+          achievedAt: row.achievedAt,
+          synced: row.synced,
+        );
+      }).toList();
+    });
   }
 
   Future<void> _syncFromRemote(User user) async {
@@ -252,10 +284,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     if (confirm2 != true) return;
 
-    await _client.auth.signOut();
+    try {
+      await _client.functions.invoke('delete-account');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка: $e')),
+        );
+      }
+      return;
+    }
+
+    await context.read<LocalRepository>().clearUserData();
+    await _profileService.clearAll();
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const AuthScreen()),
+        AppRoute(page: const AuthScreen()),
         (_) => false,
       );
     }
@@ -266,10 +310,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // ──────────────────────────────────────
 
   Future<void> _signOut() async {
+    await context.read<LocalRepository>().clearUserData();
+    await _profileService.clearAll();
     await _client.auth.signOut();
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const AuthScreen()),
+        AppRoute(page: const AuthScreen()),
         (_) => false,
       );
     }
@@ -282,8 +328,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _openCycleSetup() async {
     final result = await Navigator.push<CycleSettings>(
       context,
-      MaterialPageRoute(
-        builder: (_) => CycleSetupScreen(
+      AppRoute(page: CycleSetupScreen(
           moodColor: Colors.white,
           initial: _cycleSettings,
         ),
@@ -312,12 +357,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
         return;
       }
-      await NotificationService().scheduleDailyReminder(_notifHour, _notifMinute);
-    } else {
-      await NotificationService().cancelReminder();
     }
     setState(() => _notifEnabled = value);
     await _profileService.saveNotificationSettings(value, _notifHour, _notifMinute);
+    await NotificationService().saveNotificationSettings(
+      enabled: value,
+      hour: _notifHour,
+      minute: _notifMinute,
+    );
+  }
+
+  Future<bool> _hasInternet() async {
+    final result = await Connectivity().checkConnectivity();
+    return result.any((r) => r != ConnectivityResult.none);
   }
 
   Future<void> _pickNotificationTime() async {
@@ -342,8 +394,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _notifHour = picked.hour;
       _notifMinute = picked.minute;
     });
-    await NotificationService().scheduleDailyReminder(_notifHour, _notifMinute);
     await _profileService.saveNotificationSettings(_notifEnabled, _notifHour, _notifMinute);
+
+    final online = await _hasInternet();
+    if (!online) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Уведомления работают только при наличии интернета',
+              style: TextStyle(fontFamily: 'DotGothic'),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    await NotificationService().saveNotificationSettings(
+      enabled: _notifEnabled,
+      hour: _notifHour,
+      minute: _notifMinute,
+    );
   }
 
   String _genderLabel(Gender? gender) {
@@ -426,20 +498,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
 
-            // ── Достигнутые ачивки ─────────────────
+            // ── Достижения ─────────────────────────
             _SectionLabel('достижения', color: _accentGreen),
+            const SizedBox(height: 16),
             SizedBox(
-              height: 100,
-              child: ListView(
+              height: 148,
+              child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                children: const [
-                  _AchievementCard(label: '7 дней', icon: Icons.local_fire_department, earned: true, color: _accentYellow),
-                  _AchievementCard(label: 'первая запись', icon: Icons.edit, earned: true, color: _accentGreen),
-                  _AchievementCard(label: '30 дней', icon: Icons.star, earned: false, color: _accentYellow),
-                  _AchievementCard(label: '100 записей', icon: Icons.bar_chart, earned: false, color: _accentPurple),
-                  _AchievementCard(label: 'ранняя птица', icon: Icons.wb_sunny, earned: false, color: _accentGreen),
-                ],
+                itemCount: _achievements.length,
+                itemBuilder: (context, i) =>
+                    _AchievementCard(achievement: _achievements[i]),
               ),
             ),
 
@@ -630,48 +699,65 @@ class _SettingRow extends StatelessWidget {
   }
 }
 
-class _AchievementCard extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool earned;
-  final Color color;
+const _moodPalette = [
+  Color(0xFFFF5959), Color(0xFFFF7979), Color(0xFFFFAEAE),
+  Color(0xFF835AFF), Color(0xFF9B7BFF), Color(0xFFB8A1FF),
+  Color(0xFF46FF46), Color(0xFF66FF66), Color(0xFF83F483),
+  Color(0xFFFFDD3B), Color(0xFFFCE365), Color(0xFFFFEB89),
+];
 
-  const _AchievementCard({
-    required this.label,
-    required this.icon,
-    required this.earned,
-    required this.color,
-  });
+class _AchievementCard extends StatelessWidget {
+  final Achievement achievement;
+
+  const _AchievementCard({required this.achievement});
 
   @override
   Widget build(BuildContext context) {
+    final earned = achievement.isAchieved;
+    final color = earned ? Colors.amber : Colors.white24;
+    final borderColor = earned
+        ? _moodPalette[Random(achievement.id.hashCode).nextInt(_moodPalette.length)]
+        : Colors.white24;
+
+    String? dateLabel;
+    if (earned && achievement.achievedAt != null) {
+      dateLabel = DateFormat('dd.MM.yy').format(achievement.achievedAt!);
+    }
+
     return Container(
-      width: 80,
+      width: 112,
       margin: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
       decoration: BoxDecoration(
-        border: Border.all(
-          color: earned ? color : Colors.white12,
-        ),
-        color: earned ? color.withOpacity(0.08) : Colors.transparent,
+        border: Border.all(color: borderColor),
+        color: Colors.transparent,
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            icon,
-            color: earned ? color : Colors.white24,
-            size: 24,
-          ),
-          const SizedBox(height: 6),
+          achievementIcon(achievement),
+          const SizedBox(height: 8),
           Text(
-            label,
+            achievement.title,
             textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: 'DotGothic',
-              fontSize: 10,
-              color: earned ? color : Colors.white24,
+              fontSize: 11,
+              color: color,
             ),
           ),
+          if (dateLabel != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              dateLabel,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'DotGothic',
+                fontSize: 9,
+                color: Colors.white38,
+              ),
+            ),
+          ],
         ],
       ),
     );

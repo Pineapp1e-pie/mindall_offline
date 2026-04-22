@@ -1,3 +1,4 @@
+import 'package:mindall/ui/app_route.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../data/local/repositories/local_repository.dart';
@@ -113,8 +114,7 @@ class HomeScreen extends StatelessWidget {
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => const MoodCategoryScreen(),
+                    AppRoute(page: const MoodCategoryScreen(),
                     ),
                   );
                 },
@@ -227,8 +227,7 @@ class _MoodItem extends StatelessWidget {
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (_) => MoodEntryDetailScreen(
+              AppRoute(page: MoodEntryDetailScreen(
                   entry: entry,
                   repository: context.read<LocalRepository>(),
                 ),

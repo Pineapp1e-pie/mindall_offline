@@ -1,17 +1,25 @@
+import 'package:mindall/ui/app_route.dart';
 // health_step.dart (с Provider)
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/local/repositories/local_repository.dart';
 import '../../data/remote/supabase_sync_service.dart';
 import '../../domain/models/mood_entry_draft.dart';
 import '../../domain/models/health_draft.dart';
 import '../../domain/models/user_profile.dart';
+import '../../domain/services/achievement_service.dart';
+import '../../domain/services/crisis_detector.dart';
 import '../../domain/services/health_service.dart';
 import '../../domain/services/user_profile_service.dart';
 import '../../domain/services/cycle_calculator.dart';
 import '../../domain/services/daily_mood_analyzer.dart';
+import '../widgets/achievement_popup.dart';
 import '../widgets/step_indicator.dart';
 import '../widgets/bottom_button.dart';
 
@@ -45,6 +53,14 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
   final UserProfileService _profileService = UserProfileService();
   UserProfile? _userProfile;
   final int _currentStep = 3;
+
+  bool get _isToday {
+    final target = _draft.entryDate ?? DateTime.now();
+    final now = DateTime.now();
+    return target.year == now.year &&
+        target.month == now.month &&
+        target.day == now.day;
+  }
 
   @override
   void initState() {
@@ -138,8 +154,7 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
   Future<void> _openCycleSetup() async {
     final settings = await Navigator.push<CycleSettings>(
       context,
-      MaterialPageRoute(
-        builder: (_) => CycleSetupScreen(
+      AppRoute(page: CycleSetupScreen(
           moodColor: widget.moodColor,
           initial: _userProfile?.cycleSettings,
         ),
@@ -153,12 +168,13 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
       );
       setState(() {
         _userProfile = updatedProfile;
-        // Обновить фазу в черновике
-        final phase = CycleCalculator.calculate(settings);
+        // Обновить фазу в черновике для даты записи, а не сегодня
+        final entryDate = _draft.entryDate ?? DateTime.now();
+        final phase = CycleCalculator.calculate(settings, date: entryDate);
         _draft = _draft.copyWith(
           health: _draft.health?.copyWith(cyclePhase: phase) ??
               HealthDraft(
-                date: DateTime.now(),
+                date: DateTime(entryDate.year, entryDate.month, entryDate.day),
                 cyclePhase: phase,
                 source: 'auto',
               ),
@@ -211,7 +227,7 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
       final sleep = await _healthService.getSleepMinutes(date: target);
       final steps = await _healthService.getStepAmount(date: target);
       final cycleSettings = _userProfile?.cycleSettings;
-      final cyclePhase = cycleSettings != null
+      final cyclePhase = (_isToday && cycleSettings != null)
           ? CycleCalculator.calculate(cycleSettings)
           : _draft.health?.cyclePhase;
 
@@ -237,8 +253,7 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
   void _navigateToManualInput() async {
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => ManualHealthScreen(
+      AppRoute(page: ManualHealthScreen(
           moodColor: widget.moodColor,
           initialHealth: _draft.health,
           isFemale: _userProfile?.isFemale ?? false,
@@ -270,19 +285,78 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
 
       if (!mounted) return;
 
+      // Проверяем ачивки до перехода
+      final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
+      final achievementSvc = context.read<AchievementService>();
+      if (userId.isNotEmpty) {
+        final newAchievements =
+            await achievementSvc.checkAfterEntrySaved(userId);
+        for (final achievement in newAchievements) {
+          if (!mounted) break;
+          await showDialog<void>(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) =>
+                AchievementUnlockDialog(achievement: achievement),
+          );
+        }
+      }
+
+      if (!mounted) return;
+
+      final crisisLevel = await _getCrisisLevel(entryDate);
+      final syncSvc = context.read<SupabaseSyncService>();
+
+      if (!mounted) return;
+
       // Фоновая синхронизация — не блокируем UI
-      context.read<SupabaseSyncService>().syncAll();
+      unawaited(syncSvc.syncAll().catchError(
+        (Object e) => print('[Sync] ошибка после сохранения записи: $e'),
+      ));
 
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const MainNavScaffold()),
-            (route) => false,
+        AppRoute(page: MainNavScaffold(crisisLevel: crisisLevel)),
+        (route) => false,
       );
     } catch (e) {
       _showError('Не удалось сохранить запись');
     } finally {
       setState(() => _loading = false);
     }
+  }
+
+  Future<CrisisLevel> _getCrisisLevel(DateTime entryDate) async {
+    // Триггерные слова — наивысший приоритет
+    if (CrisisDetector.detect(_draft.note)) return CrisisLevel.crisis;
+
+    // Стрик негативных дней
+    final streak = await _countNegativeStreak(entryDate);
+    if (streak >= 7) return CrisisLevel.urgentStreak;
+    if (streak >= 3) return CrisisLevel.softStreak;
+
+    return CrisisLevel.none;
+  }
+
+  /// Считает сколько дней подряд (включая сегодня) avgX < 0.
+  Future<int> _countNegativeStreak(DateTime today) async {
+    final todayNorm = DateTime(today.year, today.month, today.day);
+    final from = todayNorm.subtract(const Duration(days: 14));
+
+    final stats = await _repository.getDailyMoodStats(from, todayNorm);
+
+
+    int streak = 0;
+    for (int i = stats.length - 1; i >= 0; i--) {
+      final stat = stats[i];
+      final statDay = DateTime(stat.date.year, stat.date.month, stat.date.day);
+      final expected = todayNorm.subtract(Duration(days: streak));
+      if (statDay != expected) break;
+      if (stat.avgX >= 0) break;
+      streak++;
+    }
+
+    return streak;
   }
 
   void _showError(String message) {
@@ -334,7 +408,11 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
                             ),
                           ),
                           child: Text(
-                            health == null ? "Определить" : "Обновить",
+                            health == null
+                                ? "Определить"
+                                : _isToday
+                                    ? "Обновить"
+                                    : "Обновить сон и шаги",
                             style: const TextStyle(
                               fontFamily: 'DotGothic',
                               color: Color(0xFF1A1A1A),
@@ -368,6 +446,8 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
                               health: health,
                               source: health.source,
                               moodColor: widget.moodColor,
+                              showCycle: _userProfile?.isFemale == true &&
+                                  _userProfile?.cycleSettings != null,
                             ),
                           ),
                         ),
