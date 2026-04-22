@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:mindall/data/local/static/moods.dart';
 import 'package:mindall/data/local/tables/daily_mood_stats.dart';
+import 'package:mindall/data/local/tables/user_achievements.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
@@ -26,13 +27,46 @@ part 'app_database.g.dart';
     HealthData,
     DailyMoodStats,
     Moods,
+    UserAchievements,
   ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 3;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.createTable(userAchievements);
+          }
+          if (from < 3) {
+            // Removed 'notified' column — drop and recreate preserving data.
+            await customStatement(
+              'CREATE TABLE user_achievements_new ('
+              '"achievement_id" TEXT NOT NULL, '
+              '"user_id" TEXT NOT NULL, '
+              '"is_achieved" INTEGER NOT NULL DEFAULT 0 '
+              'CHECK ("is_achieved" IN (0, 1)), '
+              '"achieved_at" INTEGER, '
+              '"synced" INTEGER NOT NULL DEFAULT 0 '
+              'CHECK ("synced" IN (0, 1)), '
+              'PRIMARY KEY ("user_id", "achievement_id"))',
+            );
+            await customStatement(
+              'INSERT INTO user_achievements_new '
+              'SELECT achievement_id, user_id, is_achieved, achieved_at, synced '
+              'FROM user_achievements',
+            );
+            await customStatement('DROP TABLE user_achievements');
+            await customStatement(
+              'ALTER TABLE user_achievements_new RENAME TO user_achievements',
+            );
+          }
+        },
+      );
 
   Future<void> clearUserData() async {
     await delete(moodEntryTags).go();
@@ -41,6 +75,7 @@ class AppDatabase extends _$AppDatabase {
     await delete(healthData).go();
     await delete(dailyMoodStats).go();
     await delete(moodEntries).go();
+    await delete(userAchievements).go();
   }
 }
 

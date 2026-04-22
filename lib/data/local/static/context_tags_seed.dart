@@ -46,7 +46,7 @@ class ContextTagsInitializer {
       // ───── ОБЩЕСТВО ─────
       batch.insertAll(db.contextTags, [
         ContextTagsCompanion.insert(
-          name: 'Одна',//TODO пол
+          name: 'Одна/Один',//TODO пол
           type: ContextTagType.social,
         ),
         ContextTagsCompanion.insert(

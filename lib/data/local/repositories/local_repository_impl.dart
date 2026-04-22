@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import 'package:mindall/data/local/tables/health_data.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../domain/models/achievement.dart';
 import '../../../domain/models/mood_entry_with_mood.dart';
 import '../../../domain/models/weather_draft.dart';
 import '../../../domain/models/health_draft.dart';
@@ -141,10 +142,27 @@ class LocalRepositoryImpl implements LocalRepository {
 
 
   @override
+  @override
+  Future<void> deleteDailyMoodStatForDay(DateTime day) {
+    final date = DateTime(day.year, day.month, day.day);
+    return (db.delete(db.dailyMoodStats)
+          ..where((d) => d.date.equals(date)))
+        .go();
+  }
+
   Future<void> upsertDailyMoodStat(
       DailyMoodStatsCompanion stat,
       ) async {
-    await db.into(db.dailyMoodStats).insertOnConflictUpdate(stat);
+    final rows = await (db.select(db.dailyMoodStats)
+          ..where((d) => d.date.equals(stat.date.value)))
+        .get();
+    if (rows.isNotEmpty) {
+      // Удаляем все дубли и оставляем одну актуальную строку
+      await (db.delete(db.dailyMoodStats)
+            ..where((d) => d.date.equals(stat.date.value)))
+          .go();
+    }
+    await db.into(db.dailyMoodStats).insert(stat);
   }
 
 
@@ -344,6 +362,12 @@ class LocalRepositoryImpl implements LocalRepository {
   }
 
   @override
+  Future<void> deleteHealthDataForDay(DateTime day) async {
+    final date = DateTime(day.year, day.month, day.day);
+    await (db.delete(db.healthData)..where((h) => h.date.equals(date))).go();
+  }
+
+  @override
   Future<MoodEntryDraft> getMoodEntryAsDraft(int entryId) async {
     final entry = await (db.select(db.moodEntries)
           ..where((e) => e.id.equals(entryId)))
@@ -503,6 +527,125 @@ class LocalRepositoryImpl implements LocalRepository {
         );
       }
     });
+  }
+
+  // ── Achievements ──────────────────────────────────────────────────────────
+
+  @override
+  Future<void> initAchievementsForUser(String userId) async {
+    for (final a in kAchievements) {
+      await db.into(db.userAchievements).insert(
+        UserAchievementsCompanion.insert(
+          achievementId: a.id,
+          userId: userId,
+        ),
+        mode: InsertMode.insertOrIgnore,
+      );
+    }
+  }
+
+  @override
+  Future<int> countUserAchievements(String userId) async {
+    final countExp = db.userAchievements.achievementId.count();
+    final query = db.selectOnly(db.userAchievements)
+      ..addColumns([countExp])
+      ..where(db.userAchievements.userId.equals(userId));
+    final row = await query.getSingle();
+    return row.read(countExp) ?? 0;
+  }
+
+  @override
+  Future<List<UserAchievement>> getUnachievedAchievements(String userId) =>
+      (db.select(db.userAchievements)
+            ..where((a) =>
+                a.userId.equals(userId) & a.isAchieved.equals(false)))
+          .get();
+
+  @override
+  Future<List<UserAchievement>> getAllAchievements(String userId) =>
+      (db.select(db.userAchievements)
+            ..where((a) => a.userId.equals(userId)))
+          .get();
+
+  @override
+  Future<void> markAchievementAchieved(
+      String userId, String achievementId, DateTime achievedAt) async {
+    await (db.update(db.userAchievements)
+          ..where((a) =>
+              a.userId.equals(userId) &
+              a.achievementId.equals(achievementId)))
+        .write(UserAchievementsCompanion(
+      isAchieved: const Value(true),
+      achievedAt: Value(achievedAt),
+      synced: const Value(false),
+    ));
+  }
+
+  @override
+  Future<List<UserAchievement>> getUnsyncedAchievements(String userId) =>
+      (db.select(db.userAchievements)
+            ..where((a) =>
+                a.userId.equals(userId) &
+                a.isAchieved.equals(true) &
+                a.synced.equals(false)))
+          .get();
+
+  @override
+  Future<void> markAchievementsSynced(
+      String userId, List<String> achievementIds) async {
+    for (final id in achievementIds) {
+      await (db.update(db.userAchievements)
+            ..where((a) =>
+                a.userId.equals(userId) & a.achievementId.equals(id)))
+          .write(const UserAchievementsCompanion(synced: Value(true)));
+    }
+  }
+
+  // ── Stats for achievement checks ──────────────────────────────────────────
+
+  @override
+  Future<int> countMoodEntries(String userId) async {
+    final countExp = db.moodEntries.id.count();
+    final query = db.selectOnly(db.moodEntries)
+      ..addColumns([countExp])
+      ..where(db.moodEntries.userId.equals(userId));
+    final row = await query.getSingle();
+    return row.read(countExp) ?? 0;
+  }
+
+  @override
+  Future<List<DateTime>> getUniqueMoodEntryDates(String userId) async {
+    // created_at is stored as milliseconds since epoch (Drift default)
+    final rows = await db.customSelect(
+      "SELECT DISTINCT date(created_at / 1000, 'unixepoch', 'localtime') AS d "
+      'FROM mood_entries WHERE user_id = ? ORDER BY d DESC',
+      variables: [Variable.withString(userId)],
+      readsFrom: {db.moodEntries},
+    ).get();
+    return rows.map((r) => DateTime.parse(r.read<String>('d'))).toList();
+  }
+
+  @override
+  Future<int> getDistinctMoodCategoryCount(String userId) async {
+    final rows = await db.customSelect(
+      'SELECT COUNT(DISTINCT m.category) AS cnt '
+      'FROM mood_entries me '
+      'JOIN moods m ON m.id = me.mood_id '
+      'WHERE me.user_id = ?',
+      variables: [Variable.withString(userId)],
+      readsFrom: {db.moodEntries, db.moods},
+    ).get();
+    return rows.first.read<int>('cnt');
+  }
+
+  @override
+  Future<DateTime?> getFirstMoodEntryDate(String userId) async {
+    final query = db.select(db.moodEntries)
+      ..where((e) => e.userId.equals(userId))
+      ..orderBy([(e) => OrderingTerm(expression: e.createdAt)])
+      ..limit(1);
+    final row = await query.getSingleOrNull();
+    return row?.createdAt;
   }
 
   @override

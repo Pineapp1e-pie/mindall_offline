@@ -2401,6 +2401,315 @@ class DailyMoodStatsCompanion extends UpdateCompanion<DailyMoodStat> {
   }
 }
 
+class $UserAchievementsTable extends UserAchievements
+    with TableInfo<$UserAchievementsTable, UserAchievement> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $UserAchievementsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _achievementIdMeta =
+      const VerificationMeta('achievementId');
+  @override
+  late final GeneratedColumn<String> achievementId = GeneratedColumn<String>(
+      'achievement_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+      'user_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _isAchievedMeta =
+      const VerificationMeta('isAchieved');
+  @override
+  late final GeneratedColumn<bool> isAchieved = GeneratedColumn<bool>(
+      'is_achieved', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_achieved" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _achievedAtMeta =
+      const VerificationMeta('achievedAt');
+  @override
+  late final GeneratedColumn<DateTime> achievedAt = GeneratedColumn<DateTime>(
+      'achieved_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _syncedMeta = const VerificationMeta('synced');
+  @override
+  late final GeneratedColumn<bool> synced = GeneratedColumn<bool>(
+      'synced', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("synced" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  @override
+  List<GeneratedColumn> get $columns =>
+      [achievementId, userId, isAchieved, achievedAt, synced];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'user_achievements';
+  @override
+  VerificationContext validateIntegrity(Insertable<UserAchievement> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('achievement_id')) {
+      context.handle(
+          _achievementIdMeta,
+          achievementId.isAcceptableOrUnknown(
+              data['achievement_id']!, _achievementIdMeta));
+    } else if (isInserting) {
+      context.missing(_achievementIdMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(_userIdMeta,
+          userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta));
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('is_achieved')) {
+      context.handle(
+          _isAchievedMeta,
+          isAchieved.isAcceptableOrUnknown(
+              data['is_achieved']!, _isAchievedMeta));
+    }
+    if (data.containsKey('achieved_at')) {
+      context.handle(
+          _achievedAtMeta,
+          achievedAt.isAcceptableOrUnknown(
+              data['achieved_at']!, _achievedAtMeta));
+    }
+    if (data.containsKey('synced')) {
+      context.handle(_syncedMeta,
+          synced.isAcceptableOrUnknown(data['synced']!, _syncedMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {userId, achievementId};
+  @override
+  UserAchievement map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return UserAchievement(
+      achievementId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}achievement_id'])!,
+      userId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}user_id'])!,
+      isAchieved: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_achieved'])!,
+      achievedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}achieved_at']),
+      synced: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}synced'])!,
+    );
+  }
+
+  @override
+  $UserAchievementsTable createAlias(String alias) {
+    return $UserAchievementsTable(attachedDatabase, alias);
+  }
+}
+
+class UserAchievement extends DataClass implements Insertable<UserAchievement> {
+  final String achievementId;
+  final String userId;
+  final bool isAchieved;
+  final DateTime? achievedAt;
+  final bool synced;
+  const UserAchievement(
+      {required this.achievementId,
+      required this.userId,
+      required this.isAchieved,
+      this.achievedAt,
+      required this.synced});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['achievement_id'] = Variable<String>(achievementId);
+    map['user_id'] = Variable<String>(userId);
+    map['is_achieved'] = Variable<bool>(isAchieved);
+    if (!nullToAbsent || achievedAt != null) {
+      map['achieved_at'] = Variable<DateTime>(achievedAt);
+    }
+    map['synced'] = Variable<bool>(synced);
+    return map;
+  }
+
+  UserAchievementsCompanion toCompanion(bool nullToAbsent) {
+    return UserAchievementsCompanion(
+      achievementId: Value(achievementId),
+      userId: Value(userId),
+      isAchieved: Value(isAchieved),
+      achievedAt: achievedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(achievedAt),
+      synced: Value(synced),
+    );
+  }
+
+  factory UserAchievement.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return UserAchievement(
+      achievementId: serializer.fromJson<String>(json['achievementId']),
+      userId: serializer.fromJson<String>(json['userId']),
+      isAchieved: serializer.fromJson<bool>(json['isAchieved']),
+      achievedAt: serializer.fromJson<DateTime?>(json['achievedAt']),
+      synced: serializer.fromJson<bool>(json['synced']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'achievementId': serializer.toJson<String>(achievementId),
+      'userId': serializer.toJson<String>(userId),
+      'isAchieved': serializer.toJson<bool>(isAchieved),
+      'achievedAt': serializer.toJson<DateTime?>(achievedAt),
+      'synced': serializer.toJson<bool>(synced),
+    };
+  }
+
+  UserAchievement copyWith(
+          {String? achievementId,
+          String? userId,
+          bool? isAchieved,
+          Value<DateTime?> achievedAt = const Value.absent(),
+          bool? synced}) =>
+      UserAchievement(
+        achievementId: achievementId ?? this.achievementId,
+        userId: userId ?? this.userId,
+        isAchieved: isAchieved ?? this.isAchieved,
+        achievedAt: achievedAt.present ? achievedAt.value : this.achievedAt,
+        synced: synced ?? this.synced,
+      );
+  @override
+  String toString() {
+    return (StringBuffer('UserAchievement(')
+          ..write('achievementId: $achievementId, ')
+          ..write('userId: $userId, ')
+          ..write('isAchieved: $isAchieved, ')
+          ..write('achievedAt: $achievedAt, ')
+          ..write('synced: $synced')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(achievementId, userId, isAchieved, achievedAt, synced);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is UserAchievement &&
+          other.achievementId == this.achievementId &&
+          other.userId == this.userId &&
+          other.isAchieved == this.isAchieved &&
+          other.achievedAt == this.achievedAt &&
+          other.synced == this.synced);
+}
+
+class UserAchievementsCompanion extends UpdateCompanion<UserAchievement> {
+  final Value<String> achievementId;
+  final Value<String> userId;
+  final Value<bool> isAchieved;
+  final Value<DateTime?> achievedAt;
+  final Value<bool> synced;
+  final Value<int> rowid;
+  const UserAchievementsCompanion({
+    this.achievementId = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.isAchieved = const Value.absent(),
+    this.achievedAt = const Value.absent(),
+    this.synced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  UserAchievementsCompanion.insert({
+    required String achievementId,
+    required String userId,
+    this.isAchieved = const Value.absent(),
+    this.achievedAt = const Value.absent(),
+    this.synced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : achievementId = Value(achievementId),
+        userId = Value(userId);
+  static Insertable<UserAchievement> custom({
+    Expression<String>? achievementId,
+    Expression<String>? userId,
+    Expression<bool>? isAchieved,
+    Expression<DateTime>? achievedAt,
+    Expression<bool>? synced,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (achievementId != null) 'achievement_id': achievementId,
+      if (userId != null) 'user_id': userId,
+      if (isAchieved != null) 'is_achieved': isAchieved,
+      if (achievedAt != null) 'achieved_at': achievedAt,
+      if (synced != null) 'synced': synced,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  UserAchievementsCompanion copyWith(
+      {Value<String>? achievementId,
+      Value<String>? userId,
+      Value<bool>? isAchieved,
+      Value<DateTime?>? achievedAt,
+      Value<bool>? synced,
+      Value<int>? rowid}) {
+    return UserAchievementsCompanion(
+      achievementId: achievementId ?? this.achievementId,
+      userId: userId ?? this.userId,
+      isAchieved: isAchieved ?? this.isAchieved,
+      achievedAt: achievedAt ?? this.achievedAt,
+      synced: synced ?? this.synced,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (achievementId.present) {
+      map['achievement_id'] = Variable<String>(achievementId.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (isAchieved.present) {
+      map['is_achieved'] = Variable<bool>(isAchieved.value);
+    }
+    if (achievedAt.present) {
+      map['achieved_at'] = Variable<DateTime>(achievedAt.value);
+    }
+    if (synced.present) {
+      map['synced'] = Variable<bool>(synced.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('UserAchievementsCompanion(')
+          ..write('achievementId: $achievementId, ')
+          ..write('userId: $userId, ')
+          ..write('isAchieved: $isAchieved, ')
+          ..write('achievedAt: $achievedAt, ')
+          ..write('synced: $synced, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   late final $MoodsTable moods = $MoodsTable(this);
@@ -2411,6 +2720,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $WeatherDataTable weatherData = $WeatherDataTable(this);
   late final $HealthDataTable healthData = $HealthDataTable(this);
   late final $DailyMoodStatsTable dailyMoodStats = $DailyMoodStatsTable(this);
+  late final $UserAchievementsTable userAchievements =
+      $UserAchievementsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2423,6 +2734,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         contextDetails,
         weatherData,
         healthData,
-        dailyMoodStats
+        dailyMoodStats,
+        userAchievements
       ];
 }

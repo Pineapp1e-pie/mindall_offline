@@ -47,6 +47,7 @@ abstract class LocalRepository {
       );
 
   Future<void> upsertDailyMoodStat(DailyMoodStatsCompanion stat);
+  Future<void> deleteDailyMoodStatForDay(DateTime day);
 
 
   /// --- Health data ---
@@ -70,6 +71,8 @@ abstract class LocalRepository {
 
   Future<void> deleteMoodEntry(int entryId);
 
+  Future<void> deleteHealthDataForDay(DateTime day);
+
   Future<void> updateNote(int entryId, String? note);
 
   Future<MoodEntryDraft> getMoodEntryAsDraft(int entryId);
@@ -77,6 +80,37 @@ abstract class LocalRepository {
   Future<void> updateFullEntry(int entryId, MoodEntryDraft draft);
 
   Future<void> clearUserData();
+
+  // ── Achievements ──────────────────────────────────────────────────────────
+
+  Future<void> initAchievementsForUser(String userId);
+
+  Future<int> countUserAchievements(String userId);
+
+  Future<List<UserAchievement>> getUnachievedAchievements(String userId);
+
+  Future<List<UserAchievement>> getAllAchievements(String userId);
+
+  Future<void> markAchievementAchieved(
+      String userId, String achievementId, DateTime achievedAt);
+
+  Future<List<UserAchievement>> getUnsyncedAchievements(String userId);
+
+  Future<void> markAchievementsSynced(
+      String userId, List<String> achievementIds);
+
+  // ── Stats for achievement checks ──────────────────────────────────────────
+
+  Future<int> countMoodEntries(String userId);
+
+  /// Returns unique entry dates sorted newest-first (date only, time = 00:00).
+  Future<List<DateTime>> getUniqueMoodEntryDates(String userId);
+
+  /// Count of distinct MoodCategory values present in entries for this user.
+  Future<int> getDistinctMoodCategoryCount(String userId);
+
+  /// Returns createdAt of the earliest mood entry for this user, or null if none.
+  Future<DateTime?> getFirstMoodEntryDate(String userId);
 }
 
 
