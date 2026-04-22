@@ -2,12 +2,9 @@ import '../models/health_draft.dart';
 import '../models/user_profile.dart';
 
 class CycleCalculator {
-  static CyclePhase calculate(CycleSettings settings) {
-    final today = DateTime(
-      DateTime.now().year,
-      DateTime.now().month,
-      DateTime.now().day,
-    );
+  static CyclePhase calculate(CycleSettings settings, {DateTime? date}) {
+    final now = date ?? DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final daysSince = today
         .difference(DateTime(
           settings.lastPeriodStart.year,

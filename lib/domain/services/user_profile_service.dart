@@ -79,4 +79,16 @@ class UserProfileService {
     await prefs.setInt(_notifHourKey, hour);
     await prefs.setInt(_notifMinuteKey, minute);
   }
+
+  Future<void> clearAll() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_genderKey);
+    await prefs.remove(_usernameKey);
+    await prefs.remove(_lastPeriodKey);
+    await prefs.remove(_cycleLengthKey);
+    await prefs.remove(_periodDurationKey);
+    await prefs.remove(_notifEnabledKey);
+    await prefs.remove(_notifHourKey);
+    await prefs.remove(_notifMinuteKey);
+  }
 }

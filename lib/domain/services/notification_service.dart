@@ -1,7 +1,14 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_timezone/flutter_timezone.dart';
-import 'package:timezone/data/latest_all.dart' as tz;
-import 'package:timezone/timezone.dart' as tz;
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../services/user_profile_service.dart';
+
+/// Обработчик FCM в фоне — обязательно top-level функция.
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // Android показывает system notification автоматически — ничего делать не нужно.
+}
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._();
@@ -12,106 +19,126 @@ class NotificationService {
 
   static const _channelId = 'mood_reminder';
   static const _channelName = 'Напоминания о настроении';
-  static const _notifId = 1;
-  static const _testNotifId = 2;
-
-  static const _androidDetails = AndroidNotificationDetails(
-    _channelId,
-    _channelName,
-    channelDescription: 'Ежедневные напоминания записать настроение',
-    importance: Importance.high,
-    priority: Priority.high,
-  );
 
   Future<void> init() async {
-    tz.initializeTimeZones();
-    final tzInfo = await FlutterTimezone.getLocalTimezone();
-    tz.setLocalLocation(tz.getLocation(tzInfo.identifier));
-
+    // Локальные уведомления для отображения когда приложение открыто
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const iosSettings = DarwinInitializationSettings(
-      requestAlertPermission: false,
-      requestBadgePermission: false,
-      requestSoundPermission: false,
+    await _plugin.initialize(
+      const InitializationSettings(android: androidSettings),
     );
 
-    await _plugin.initialize(
-      const InitializationSettings(android: androidSettings, iOS: iosSettings),
+    // Создаём канал с высоким приоритетом
+    const channel = AndroidNotificationChannel(
+      _channelId,
+      _channelName,
+      description: 'Ежедневные напоминания записать настроение',
+      importance: Importance.high,
     );
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
+
+    // Когда приложение открыто — показываем через flutter_local_notifications
+    FirebaseMessaging.onMessage.listen(_showForegroundNotification);
   }
 
   Future<bool> requestPermission() async {
-    final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    if (android != null) {
-      return await android.requestNotificationsPermission() ?? false;
-    }
-    final ios = _plugin.resolvePlatformSpecificImplementation<
-        IOSFlutterLocalNotificationsPlugin>();
-    if (ios != null) {
-      return await ios.requestPermissions(
-            alert: true,
-            badge: true,
-            sound: true,
-          ) ??
-          false;
-    }
-    return true;
+    final settings = await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+    return settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional;
   }
 
-  /// Показывает тестовое уведомление немедленно.
-  Future<void> showTestNotification() async {
-    await _plugin.show(
-      _testNotifId,
-      'Как ты сегодня?',
-      'Запиши своё настроение',
+  void _showForegroundNotification(RemoteMessage message) {
+    final n = message.notification;
+    if (n == null) return;
+    _plugin.show(
+      message.hashCode,
+      n.title,
+      n.body,
       const NotificationDetails(
-        android: _androidDetails,
-        iOS: DarwinNotificationDetails(),
+        android: AndroidNotificationDetails(
+          _channelId,
+          _channelName,
+          channelDescription: 'Ежедневные напоминания записать настроение',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
       ),
     );
   }
 
-  /// Планирует ежедневное уведомление в [hour]:[minute].
-  /// Использует точные будильники если разрешение выдано, иначе запрашивает его.
-  Future<void> scheduleDailyReminder(int hour, int minute) async {
-    await _plugin.cancel(_notifId);
+  /// Сохраняет FCM-токен + настройки уведомлений в Supabase.
+  /// Сервер (Edge Function) читает это и отправляет push в нужное время.
+  Future<void> saveNotificationSettings({
+    required bool enabled,
+    required int hour,
+    required int minute,
+  }) async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
 
-    final now = tz.TZDateTime.now(tz.local);
-    var next =
-        tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
-    if (next.isBefore(now)) {
-      next = next.add(const Duration(days: 1));
-    }
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token == null) return;
 
-    final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    final canExact = await android?.canScheduleExactNotifications() ?? true;
+    final utcOffsetMinutes = DateTime.now().timeZoneOffset.inMinutes;
 
-    if (!canExact) {
-      // Открываем системные настройки чтобы пользователь выдал разрешение
-      await android?.requestExactAlarmsPermission();
-    }
-
-    await _plugin.zonedSchedule(
-      _notifId,
-      'Как ты сегодня?',
-      'Запиши своё настроение',
-      next,
-      const NotificationDetails(
-        android: _androidDetails,
-        iOS: DarwinNotificationDetails(),
-      ),
-      androidScheduleMode: canExact
-          ? AndroidScheduleMode.exactAllowWhileIdle
-          : AndroidScheduleMode.inexactAllowWhileIdle,
-      matchDateTimeComponents: DateTimeComponents.time,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
+    await Supabase.instance.client.from('push_tokens').upsert(
+      {
+        'user_id': userId,
+        'fcm_token': token,
+        'notif_enabled': enabled,
+        'notif_hour': hour,
+        'notif_minute': minute,
+        'utc_offset_minutes': utcOffsetMinutes,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      onConflict: 'user_id',
     );
   }
 
-  Future<void> cancelReminder() async {
-    await _plugin.cancel(_notifId);
+  /// Загружает настройки уведомлений из Supabase и сохраняет в SharedPreferences.
+  /// Вызывать после входа в аккаунт.
+  Future<void> loadSettingsFromRemote() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    final row = await Supabase.instance.client
+        .from('push_tokens')
+        .select('notif_enabled, notif_hour, notif_minute')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (row == null) return;
+
+    final enabled = row['notif_enabled'] as bool? ?? false;
+    final hour = row['notif_hour'] as int? ?? 18;
+    final minute = row['notif_minute'] as int? ?? 0;
+    await UserProfileService().saveNotificationSettings(enabled, hour, minute);
+  }
+
+  /// Регистрирует FCM-токен при входе в аккаунт (не меняет настройки уведомлений).
+  Future<void> registerToken() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token == null) return;
+
+    final utcOffsetMinutes = DateTime.now().timeZoneOffset.inMinutes;
+
+    await Supabase.instance.client.from('push_tokens').upsert(
+      {
+        'user_id': userId,
+        'fcm_token': token,
+        'utc_offset_minutes': utcOffsetMinutes,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      onConflict: 'user_id',
+    );
   }
 }
