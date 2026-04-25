@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 import '../../domain/models/user_profile.dart';
 import '../../domain/services/cycle_calculator.dart';
@@ -21,8 +22,6 @@ class CycleSetupScreen extends StatefulWidget {
 }
 
 class _CycleSetupScreenState extends State<CycleSetupScreen> {
-  final _profileService = UserProfileService();
-
   DateTime? _lastPeriodStart;
   int _cycleLength = 28;
   int _periodDuration = 5;
@@ -85,7 +84,7 @@ class _CycleSetupScreenState extends State<CycleSetupScreen> {
       cycleLengthDays: _cycleLength,
       periodDurationDays: _periodDuration,
     );
-    await _profileService.saveCycleSettings(settings);
+    await context.read<UserProfileService>().saveCycleSettings(settings);
     if (!mounted) return;
     Navigator.pop(context, settings);
   }

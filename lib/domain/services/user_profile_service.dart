@@ -1,7 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_profile.dart';
 
-class UserProfileService {
+class UserProfileService extends ChangeNotifier {
   static const _genderKey = 'user_gender';
   static const _usernameKey = 'user_username';
   static const _lastPeriodKey = 'cycle_last_period';
@@ -10,6 +11,26 @@ class UserProfileService {
   static const _notifEnabledKey = 'notif_enabled';
   static const _notifHourKey = 'notif_hour';
   static const _notifMinuteKey = 'notif_minute';
+
+  Gender? _gender;
+  CycleSettings? _cycleSettings;
+  String? _username;
+
+  Gender? get gender => _gender;
+  CycleSettings? get cycleSettings => _cycleSettings;
+  String? get username => _username;
+  bool get isFemale => _gender == Gender.female;
+  bool get trackCycle => _cycleSettings != null;
+
+  /// Загружает данные из SharedPreferences в память. Вызывать один раз при запуске.
+  Future<void> init() async {
+    final profile = await load();
+    if (profile != null) {
+      _gender = profile.gender;
+      _cycleSettings = profile.cycleSettings;
+      _username = profile.username;
+    }
+  }
 
   Future<UserProfile?> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -40,21 +61,35 @@ class UserProfileService {
   }
 
   Future<void> saveGender(Gender gender) async {
+    _gender = gender;
+    notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_genderKey, gender.name);
   }
 
   Future<void> saveUsername(String username) async {
+    _username = username;
+    notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_usernameKey, username);
   }
 
   Future<void> saveCycleSettings(CycleSettings settings) async {
+    _cycleSettings = settings;
+    notifyListeners();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-        _lastPeriodKey, settings.lastPeriodStart.toIso8601String());
+    await prefs.setString(_lastPeriodKey, settings.lastPeriodStart.toIso8601String());
     await prefs.setInt(_cycleLengthKey, settings.cycleLengthDays);
     await prefs.setInt(_periodDurationKey, settings.periodDurationDays);
+  }
+
+  Future<void> clearCycleSettings() async {
+    _cycleSettings = null;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_lastPeriodKey);
+    await prefs.remove(_cycleLengthKey);
+    await prefs.remove(_periodDurationKey);
   }
 
   Future<bool> loadNotificationsEnabled() async {
@@ -72,8 +107,7 @@ class UserProfileService {
     return prefs.getInt(_notifMinuteKey) ?? 0;
   }
 
-  Future<void> saveNotificationSettings(
-      bool enabled, int hour, int minute) async {
+  Future<void> saveNotificationSettings(bool enabled, int hour, int minute) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_notifEnabledKey, enabled);
     await prefs.setInt(_notifHourKey, hour);
@@ -81,6 +115,10 @@ class UserProfileService {
   }
 
   Future<void> clearAll() async {
+    _gender = null;
+    _cycleSettings = null;
+    _username = null;
+    notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_genderKey);
     await prefs.remove(_usernameKey);

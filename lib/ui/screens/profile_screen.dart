@@ -29,7 +29,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final _profileService = UserProfileService();
+  late UserProfileService _profileService;
   final _client = Supabase.instance.client;
 
   String _username = '';
@@ -48,6 +48,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _profileService = context.read<UserProfileService>();
     _load();
   }
 
@@ -57,14 +58,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     _email = user.email ?? '';
 
-    // Сначала показываем локальный кеш — без сети
-    final localProfile = await _profileService.load();
-    if (localProfile != null) {
-      _username = localProfile.username ?? '';
-      _gender = localProfile.gender;
-      _cycleSettings = localProfile.cycleSettings;
-      _trackCycle = localProfile.cycleSettings != null;
-    }
+    // Читаем из памяти — данные уже загружены при старте приложения
+    _username = _profileService.username ?? '';
+    _gender = _profileService.gender;
+    _cycleSettings = _profileService.cycleSettings;
+    _trackCycle = _profileService.cycleSettings != null;
 
     _notifEnabled = await _profileService.loadNotificationsEnabled();
     _notifHour = await _profileService.loadNotificationHour();
@@ -434,6 +432,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     if (!value) {
       setState(() => _cycleSettings = null);
+      await _profileService.clearCycleSettings();
     }
   }
 

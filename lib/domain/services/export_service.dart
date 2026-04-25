@@ -753,7 +753,7 @@ class ExportService {
             timeline.reduce((a, b) => a.value >= b.value ? a : b).value,
           )}).',
         if (contrastCount > 0)
-          '$contrastCount ${_pluralDays(contrastCount)} '
+          '$contrastCount ${_pluralDays(contrastCount)}  '
               'с резкими перепадами настроения.',
       ];
 

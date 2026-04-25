@@ -41,7 +41,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   late ExportService _exportService;
   bool _initialized = false;
   bool _exporting = false;
-  bool _trackCycle = false;
 
   @override
   void didChangeDependencies() {
@@ -50,14 +49,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       _service = AnalyticsService(context.read<LocalRepository>());
       _exportService = ExportService(context.read<LocalRepository>());
       _initialized = true;
-      _loadCycleTracking();
-    }
-  }
-
-  Future<void> _loadCycleTracking() async {
-    final profile = await UserProfileService().load();
-    if (mounted && profile?.cycleSettings != null) {
-      setState(() => _trackCycle = true);
     }
   }
 
@@ -308,6 +299,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final trackCycle = context.watch<UserProfileService>().trackCycle;
     return Scaffold(
       backgroundColor: const Color(0xFF0E1511),
       body: SafeArea(
@@ -497,7 +489,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     title: 'Настроение : Погода',
                     onTap: () => _openCorrelation(CorrelationType.weather),
                   ),
-                  if (_trackCycle) ...[
+                  if (trackCycle) ...[
                     const SizedBox(height: 8),
                     _CorrelationCard(
                       title: 'Цикл : Настроение',
@@ -630,6 +622,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   Future<void> _exportPeriodPdf() async {
     if (_exporting) return;
+    final trackCycle = context.read<UserProfileService>().trackCycle;
     setState(() => _exporting = true);
     try {
       final bytes = await _exportService.exportAnalyticsToPdfBytes(
@@ -637,7 +630,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         _range.end,
         _rangeLabel,
         isYear: _period == _Period.year,
-        trackCycle: _trackCycle,
+        trackCycle: trackCycle,
       );
       final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay);
       await Printing.sharePdf(
@@ -662,11 +655,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   Future<void> _exportDayPdf() async {
     if (_exporting) return;
+    final trackCycle = context.read<UserProfileService>().trackCycle;
     setState(() => _exporting = true);
     try {
       final bytes = await _exportService.exportDayToPdfBytes(
         _selectedDay,
-        trackCycle: _trackCycle,
+        trackCycle: trackCycle,
       );
       final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay);
       await Printing.sharePdf(

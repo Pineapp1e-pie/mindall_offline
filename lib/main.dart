@@ -17,6 +17,7 @@ import 'data/local/static/context_tags_seed.dart';
 import 'background/step_sync_worker.dart';
 import 'domain/services/achievement_service.dart';
 import 'domain/services/notification_service.dart';
+import 'domain/services/user_profile_service.dart';
 
 import 'ui/screens/main_nav_scaffold.dart';
 import 'ui/screens/auth_screen.dart';
@@ -47,6 +48,8 @@ void main() async {
   final repository = LocalRepositoryImpl(database);
   final achievementService = AchievementService(repository);
   final syncService = SupabaseSyncService(database);
+  final profileService = UserProfileService();
+  await profileService.init();
 
   await MoodsInitializer(database).init();
   await ContextTagsInitializer(database).init();
@@ -68,6 +71,7 @@ void main() async {
         Provider<LocalRepository>(create: (_) => repository),
         Provider<SupabaseSyncService>(create: (_) => syncService),
         Provider<AchievementService>(create: (_) => achievementService),
+        ChangeNotifierProvider<UserProfileService>(create: (_) => profileService),
       ],
       child: const MyApp(),
     ),

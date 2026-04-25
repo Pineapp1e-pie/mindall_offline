@@ -50,7 +50,6 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
   bool _isLoadingExisting = true;
 
   final HealthService _healthService = HealthService();
-  final UserProfileService _profileService = UserProfileService();
   UserProfile? _userProfile;
   final int _currentStep = 3;
 
@@ -79,18 +78,21 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
   }
 
   Future<void> _loadProfile() async {
-    final profile = await _profileService.load();
-    if (!mounted) return;
+    final profileService = context.read<UserProfileService>();
 
-    if (profile == null) {
+    if (profileService.gender == null) {
       // Первый запуск — спросить пол
       WidgetsBinding.instance.addPostFrameCallback((_) => _showGenderDialog());
     } else {
+      final profile = UserProfile(
+        gender: profileService.gender!,
+        username: profileService.username,
+        cycleSettings: profileService.cycleSettings,
+      );
       setState(() => _userProfile = profile);
       // Если женщина и нет настроек цикла — предложить настроить
       if (profile.isFemale && profile.cycleSettings == null) {
-        WidgetsBinding.instance.addPostFrameCallback(
-            (_) => _openCycleSetup());
+        WidgetsBinding.instance.addPostFrameCallback((_) => _openCycleSetup());
       }
     }
   }
@@ -123,7 +125,7 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
   Widget _genderOption(BuildContext ctx, String label, Gender gender) {
     return GestureDetector(
       onTap: () async {
-        await _profileService.saveGender(gender);
+        await context.read<UserProfileService>().saveGender(gender);
         final profile = UserProfile(gender: gender);
         if (!mounted) return;
         setState(() => _userProfile = profile);
