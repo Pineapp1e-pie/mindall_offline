@@ -16,10 +16,12 @@ import '../../domain/models/user_profile.dart';
 import '../../domain/services/achievement_service.dart';
 import '../../domain/services/crisis_detector.dart';
 import '../../domain/services/health_service.dart';
+import '../../domain/services/subscription_service.dart';
 import '../../domain/services/user_profile_service.dart';
 import '../../domain/services/cycle_calculator.dart';
 import '../../domain/services/daily_mood_analyzer.dart';
 import '../widgets/achievement_popup.dart';
+import '../widgets/paywall_widget.dart';
 import '../widgets/step_indicator.dart';
 import '../widgets/bottom_button.dart';
 
@@ -49,7 +51,7 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
   bool _loading = false;
   bool _isLoadingExisting = true;
 
-  final HealthService _healthService = HealthService();
+  late final HealthService _healthService;
   UserProfile? _userProfile;
   final int _currentStep = 3;
 
@@ -65,6 +67,7 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
   void initState() {
     super.initState();
     _draft = widget.draft;
+    _healthService = HealthService(context.read<SubscriptionService>());
 
     // 👇 Получаем репозиторий один раз при инициализации
     _repository = context.read<LocalRepository>();
@@ -88,6 +91,7 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
         gender: profileService.gender!,
         username: profileService.username,
         cycleSettings: profileService.cycleSettings,
+        subscriptionType: profileService.subscriptionType,
       );
       setState(() => _userProfile = profile);
       // Если женщина и нет настроек цикла — предложить настроить
@@ -106,7 +110,10 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
         title: const Text(
           'Ваш пол',
           style: TextStyle(
-              fontFamily: 'DotGothic', color: Colors.white, fontSize: 16),
+            fontFamily: 'DotGothic',
+            color: Colors.white,
+            fontSize: 16,
+          ),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -115,7 +122,11 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
             const SizedBox(height: 8),
             _genderOption(ctx, 'Мужской', Gender.male),
             const SizedBox(height: 8),
-            _genderOption(ctx, 'Предпочитаю не указывать', Gender.preferNotToSay),
+            _genderOption(
+              ctx,
+              'Предпочитаю не указывать',
+              Gender.preferNotToSay,
+            ),
           ],
         ),
       ),
@@ -125,8 +136,12 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
   Widget _genderOption(BuildContext ctx, String label, Gender gender) {
     return GestureDetector(
       onTap: () async {
-        await context.read<UserProfileService>().saveGender(gender);
-        final profile = UserProfile(gender: gender);
+        final profileService = context.read<UserProfileService>();
+        await profileService.saveGender(gender);
+        final profile = UserProfile(
+          gender: gender,
+          subscriptionType: profileService.subscriptionType,
+        );
         if (!mounted) return;
         setState(() => _userProfile = profile);
         if (!ctx.mounted) return;
@@ -138,9 +153,7 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.white24),
-        ),
+        decoration: BoxDecoration(border: Border.all(color: Colors.white24)),
         child: Text(
           label,
           style: const TextStyle(
@@ -156,7 +169,8 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
   Future<void> _openCycleSetup() async {
     final settings = await Navigator.push<CycleSettings>(
       context,
-      AppRoute(page: CycleSetupScreen(
+      AppRoute(
+        page: CycleSetupScreen(
           moodColor: widget.moodColor,
           initial: _userProfile?.cycleSettings,
         ),
@@ -166,7 +180,11 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
     if (settings != null && mounted) {
       final updatedProfile = UserProfile(
         gender: _userProfile?.gender ?? Gender.female,
+        username: _userProfile?.username,
         cycleSettings: settings,
+        subscriptionType:
+            _userProfile?.subscriptionType ??
+            context.read<UserProfileService>().subscriptionType,
       );
       setState(() {
         _userProfile = updatedProfile;
@@ -174,7 +192,8 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
         final entryDate = _draft.entryDate ?? DateTime.now();
         final phase = CycleCalculator.calculate(settings, date: entryDate);
         _draft = _draft.copyWith(
-          health: _draft.health?.copyWith(cyclePhase: phase) ??
+          health:
+              _draft.health?.copyWith(cyclePhase: phase) ??
               HealthDraft(
                 date: DateTime(entryDate.year, entryDate.month, entryDate.day),
                 cyclePhase: phase,
@@ -215,12 +234,22 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
   }
 
   Future<void> _detectHealth() async {
+    final hasAccess = context.read<SubscriptionService>().checkAccess(
+      SubscriptionFeature.autoHealthData,
+    );
+    if (!hasAccess) {
+      _showPaywall();
+      return;
+    }
+
     setState(() => _loading = true);
 
     try {
       final granted = await _healthService.requestPermissions();
       if (!granted) {
-        _showError("Нет доступа к данным здоровья.\nПодключите Health Connect.");
+        _showError(
+          "Нет доступа к данным здоровья.\nПодключите Health Connect.",
+        );
         return;
       }
 
@@ -244,7 +273,6 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
       setState(() {
         _draft = _draft.copyWith(health: health);
       });
-
     } catch (e) {
       _showError("Ошибка получения данных: $e");
     } finally {
@@ -255,11 +283,14 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
   void _navigateToManualInput() async {
     final result = await Navigator.push(
       context,
-      AppRoute(page: ManualHealthScreen(
+      AppRoute(
+        page: ManualHealthScreen(
           moodColor: widget.moodColor,
           initialHealth: _draft.health,
           isFemale: _userProfile?.isFemale ?? false,
-          onUpdateCycle: _userProfile?.isFemale == true ? _openCycleSetup : null,
+          onUpdateCycle: _userProfile?.isFemale == true
+              ? _openCycleSetup
+              : null,
         ),
       ),
     );
@@ -271,8 +302,24 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
     }
   }
 
+  void _showPaywall() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) =>
+          const Padding(padding: EdgeInsets.all(16), child: PaywallWidget()),
+    );
+  }
+
   void _saveAndContinue() async {
     setState(() => _loading = true);
+
+    // Захватываем всё из context ДО первого await
+    final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
+    final achievementSvc = userId.isNotEmpty
+        ? context.read<AchievementService>()
+        : null;
 
     try {
       final entryDate = _draft.entryDate ?? DateTime.now();
@@ -285,22 +332,21 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
 
       await DailyMoodAnalyzer(_repository).analyzeDay(entryDate);
 
-      if (!mounted) return;
+      // Проверяем и записываем ачивки независимо от состояния виджета
+      if (achievementSvc != null) {
+        final newAchievements = await achievementSvc.checkAfterEntrySaved(
+          userId,
+        );
 
-      // Проверяем ачивки до перехода
-      final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
-      final achievementSvc = context.read<AchievementService>();
-      if (userId.isNotEmpty) {
-        final newAchievements =
-            await achievementSvc.checkAfterEntrySaved(userId);
-        for (final achievement in newAchievements) {
-          if (!mounted) break;
-          await showDialog<void>(
-            context: context,
-            barrierDismissible: false,
-            builder: (_) =>
-                AchievementUnlockDialog(achievement: achievement),
-          );
+        if (mounted) {
+          for (final achievement in newAchievements) {
+            if (!mounted) break;
+            await showDialog<void>(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => AchievementUnlockDialog(achievement: achievement),
+            );
+          }
         }
       }
 
@@ -312,9 +358,11 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
       if (!mounted) return;
 
       // Фоновая синхронизация — не блокируем UI
-      unawaited(syncSvc.syncAll().catchError(
-        (Object e) => print('[Sync] ошибка после сохранения записи: $e'),
-      ));
+      unawaited(
+        syncSvc.syncAll().catchError(
+          (Object e) => print('[Sync] ошибка после сохранения записи: $e'),
+        ),
+      );
 
       Navigator.pushAndRemoveUntil(
         context,
@@ -347,7 +395,6 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
 
     final stats = await _repository.getDailyMoodStats(from, todayNorm);
 
-
     int streak = 0;
     for (int i = stats.length - 1; i >= 0; i--) {
       final stat = stats[i];
@@ -370,6 +417,29 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final hasAccess = context.watch<SubscriptionService>().checkAccess(
+      SubscriptionFeature.healthData,
+    );
+    if (!hasAccess) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0E1511),
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => Navigator.pop(context, _draft),
+          ),
+        ),
+        body: const SafeArea(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: PaywallWidget()),
+          ),
+        ),
+      );
+    }
+
     final health = _draft.health;
 
     return Scaffold(
@@ -413,8 +483,8 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
                             health == null
                                 ? "Определить"
                                 : _isToday
-                                    ? "Обновить"
-                                    : "Обновить сон и шаги",
+                                ? "Обновить"
+                                : "Обновить сон и шаги",
                             style: const TextStyle(
                               fontFamily: 'DotGothic',
                               color: Color(0xFF1A1A1A),
@@ -448,7 +518,8 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
                               health: health,
                               source: health.source,
                               moodColor: widget.moodColor,
-                              showCycle: _userProfile?.isFemale == true &&
+                              showCycle:
+                                  _userProfile?.isFemale == true &&
                                   _userProfile?.cycleSettings != null,
                             ),
                           ),

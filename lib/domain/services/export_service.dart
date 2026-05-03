@@ -16,6 +16,7 @@ import '../../ui/assets/mood_colors.dart';
 import '../models/chart_models.dart';
 import '../models/health_draft.dart';
 import '../models/mood_entry_with_mood.dart';
+import 'subscription_service.dart';
 
 // Вспомогательный класс: запись настроения + её детали + теги (для дневного PDF)
 class _DayEntry {
@@ -30,24 +31,30 @@ class _DayEntry {
 class _DayCorr {
   final DateTime date;
   final double avgMood; // -1..+1
-  final double? sleep;  // часы (sleepMinutes / 60)
-  final double? steps;  // шаги
+  final double? sleep; // часы (sleepMinutes / 60)
+  final double? steps; // шаги
   final CyclePhase? cyclePhase;
 
-  _DayCorr(this.date, this.avgMood,
-      {this.sleep, this.steps, this.cyclePhase});
+  _DayCorr(this.date, this.avgMood, {this.sleep, this.steps, this.cyclePhase});
 }
 
 class ExportService {
   final LocalRepository _repo;
+  final SubscriptionService _subscriptionService;
 
-  ExportService(this._repo);
+  ExportService(this._repo, this._subscriptionService);
+
+  Future<void> _ensureExportAccess() {
+    return _subscriptionService.ensureAccess(SubscriptionFeature.exportData);
+  }
 
   // ─────────────────────────────────────────────────
   // Excel: все записи за период
   // ─────────────────────────────────────────────────
 
   Future<String> exportEntriesToExcel(DateTime from, DateTime to) async {
+    await _ensureExportAccess();
+
     final entries = await _repo.getMoodEntriesWithMoodForPeriod(from, to);
     entries.sort((a, b) => a.entry.createdAt.compareTo(b.entry.createdAt));
 
@@ -60,7 +67,9 @@ class ExportService {
     for (var i = 0; i < headers.length; i++) {
       sheet
           .cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0))
-          .value = TextCellValue(headers[i]);
+          .value = TextCellValue(
+        headers[i],
+      );
     }
 
     final dateFmt = DateFormat('dd.MM.yyyy');
@@ -73,19 +82,29 @@ class ExportService {
 
       sheet
           .cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: row))
-          .value = TextCellValue(dateFmt.format(e.entry.createdAt));
+          .value = TextCellValue(
+        dateFmt.format(e.entry.createdAt),
+      );
       sheet
           .cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: row))
-          .value = TextCellValue(timeFmt.format(e.entry.createdAt));
+          .value = TextCellValue(
+        timeFmt.format(e.entry.createdAt),
+      );
       sheet
           .cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: row))
-          .value = TextCellValue(e.mood.name);
+          .value = TextCellValue(
+        e.mood.name,
+      );
       sheet
           .cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: row))
-          .value = TextCellValue(_categoryLabel(e.mood.category));
+          .value = TextCellValue(
+        _categoryLabel(e.mood.category),
+      );
       sheet
           .cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: row))
-          .value = TextCellValue(details?.note ?? '');
+          .value = TextCellValue(
+        details?.note ?? '',
+      );
     }
 
     final dir = await getApplicationDocumentsDirectory();
@@ -110,17 +129,29 @@ class ExportService {
     bool isYear = false,
     bool trackCycle = false,
   }) async {
-    final fontData =
-        await rootBundle.load('lib/ui/assets/fonts/Inter-Regular.ttf');
+    await _ensureExportAccess();
+
+    final fontData = await rootBundle.load(
+      'lib/ui/assets/fonts/Inter-Regular.ttf',
+    );
     final ttf = pw.Font.ttf(fontData.buffer.asByteData());
 
     final base = pw.TextStyle(font: ttf, fontSize: 11);
     final h1 = pw.TextStyle(
-        font: ttf, fontSize: 20, fontWeight: pw.FontWeight.bold);
+      font: ttf,
+      fontSize: 20,
+      fontWeight: pw.FontWeight.bold,
+    );
     final h2 = pw.TextStyle(
-        font: ttf, fontSize: 13, fontWeight: pw.FontWeight.bold);
-    final small =
-        pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey600);
+      font: ttf,
+      fontSize: 13,
+      fontWeight: pw.FontWeight.bold,
+    );
+    final small = pw.TextStyle(
+      font: ttf,
+      fontSize: 9,
+      color: PdfColors.grey600,
+    );
     final grey = base.copyWith(color: PdfColors.grey600);
 
     // ── Основные данные + данные для корреляций ──
@@ -143,8 +174,7 @@ class ExportService {
         tmp.putIfAbsent(day, () => []).add(e.mood.x);
       }
       for (final kv in tmp.entries) {
-        dayAvgMood[kv.key] =
-            kv.value.reduce((a, b) => a + b) / kv.value.length;
+        dayAvgMood[kv.key] = kv.value.reduce((a, b) => a + b) / kv.value.length;
       }
     }
 
@@ -155,9 +185,9 @@ class ExportService {
     }
 
     // Scatter-точки для корреляций: одна точка = одна запись настроения
-    final sleepScatter = <ScatterPoint>[];   // X=сон ч,    Y=настроение
-    final stepsScatter = <ScatterPoint>[];   // X=шаги тыс, Y=настроение
-    final cycleScatter = <ScatterPoint>[];   // X=настроение, Y=фаза 0-3
+    final sleepScatter = <ScatterPoint>[]; // X=сон ч,    Y=настроение
+    final stepsScatter = <ScatterPoint>[]; // X=шаги тыс, Y=настроение
+    final cycleScatter = <ScatterPoint>[]; // X=настроение, Y=фаза 0-3
     final weatherScatter = <ScatterPoint>[]; // X=категория 0-5, Y=настроение
     {
       final byDay = <DateTime, List<MoodEntryWithMood>>{};
@@ -171,28 +201,43 @@ class ExportService {
         if (h == null) continue;
         for (final e in kv.value) {
           if (h.sleepMinutes != null) {
-            sleepScatter.add(ScatterPoint(
-                h.sleepMinutes! / 60.0, e.mood.x,
-                moodName: e.mood.name));
+            sleepScatter.add(
+              ScatterPoint(
+                h.sleepMinutes! / 60.0,
+                e.mood.x,
+                moodName: e.mood.name,
+              ),
+            );
           }
           if (h.stepsAmount != null) {
-            stepsScatter.add(ScatterPoint(
-                h.stepsAmount! / 1000.0, e.mood.x,
-                moodName: e.mood.name));
+            stepsScatter.add(
+              ScatterPoint(
+                h.stepsAmount! / 1000.0,
+                e.mood.x,
+                moodName: e.mood.name,
+              ),
+            );
           }
           if (trackCycle && h.cyclePhase != null) {
-            cycleScatter.add(ScatterPoint(
-                e.mood.x,                                    // X = mood -1..+1
+            cycleScatter.add(
+              ScatterPoint(
+                e.mood.x, // X = mood -1..+1
                 _cyclePhaseIndex(h.cyclePhase!).toDouble(), // Y = phase 0-3
-                moodName: e.mood.name));
+                moodName: e.mood.name,
+              ),
+            );
           }
         }
       }
     }
     for (final p in weatherPairs) {
-      weatherScatter.add(ScatterPoint(
-          _tempCatIdx(p.temperatureCategory).toDouble(), p.moodX,
-          moodName: p.moodName));
+      weatherScatter.add(
+        ScatterPoint(
+          _tempCatIdx(p.temperatureCategory).toDouble(),
+          p.moodX,
+          moodName: p.moodName,
+        ),
+      );
     }
 
     // Квадранты — подсчёт из уже загруженных entries (без повторного DB-запроса)
@@ -211,10 +256,11 @@ class ExportService {
     for (final e in entries) {
       moodCounts[e.mood.name] = (moodCounts[e.mood.name] ?? 0) + 1;
     }
-    final top5 = (moodCounts.entries.toList()
-          ..sort((a, b) => b.value.compareTo(a.value)))
-        .take(5)
-        .toList();
+    final top5 =
+        (moodCounts.entries.toList()
+              ..sort((a, b) => b.value.compareTo(a.value)))
+            .take(5)
+            .toList();
     final maxMoodCount = top5.isNotEmpty ? top5.first.value : 1;
 
     // ── Цвета типов дней ──
@@ -228,59 +274,62 @@ class ExportService {
 
     // Карточка со статистической метрикой
     pw.Widget statCard(String label, String value) => pw.Expanded(
-          child: pw.Container(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-            decoration: pw.BoxDecoration(
-              border: pw.Border.all(color: PdfColors.grey400, width: 0.7),
+      child: pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.grey400, width: 0.7),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              value,
+              style: pw.TextStyle(
+                font: ttf,
+                fontSize: 15,
+                fontWeight: pw.FontWeight.bold,
+              ),
             ),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(value,
-                    style: pw.TextStyle(
-                        font: ttf,
-                        fontSize: 15,
-                        fontWeight: pw.FontWeight.bold)),
-                pw.SizedBox(height: 3),
-                pw.Text(label, style: small),
-              ],
-            ),
-          ),
-        );
+            pw.SizedBox(height: 3),
+            pw.Text(label, style: small),
+          ],
+        ),
+      ),
+    );
 
     // Блок инсайтов с фиолетовой левой полоской
     pw.Widget insightBlock(List<String> lines) => pw.Container(
-          padding: const pw.EdgeInsets.all(12),
-          decoration: const pw.BoxDecoration(
-            color: PdfColors.purple50,
-            border: pw.Border(
-              left: pw.BorderSide(color: PdfColors.purple300, width: 3),
+      padding: const pw.EdgeInsets.all(12),
+      decoration: const pw.BoxDecoration(
+        color: PdfColors.purple50,
+        border: pw.Border(
+          left: pw.BorderSide(color: PdfColors.purple300, width: 3),
+        ),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          for (final l in lines)
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 3),
+              child: pw.Text(l, style: base),
             ),
-          ),
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              for (final l in lines)
-                pw.Padding(
-                  padding: const pw.EdgeInsets.only(bottom: 3),
-                  child: pw.Text(l, style: base),
-                ),
-            ],
-          ),
-        );
+        ],
+      ),
+    );
 
     // Заголовок секции с опциональным серым подзаголовком
     pw.Widget sectionH(String title, {String? subtitle}) => pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Text(title, style: h2),
-            if (subtitle != null) ...[
-              pw.SizedBox(height: 4),
-              pw.Text(subtitle, style: grey),
-            ],
-            pw.SizedBox(height: 12),
-          ],
-        );
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(title, style: h2),
+        if (subtitle != null) ...[
+          pw.SizedBox(height: 4),
+          pw.Text(subtitle, style: grey),
+        ],
+        pw.SizedBox(height: 12),
+      ],
+    );
 
     // Карточка квадранта (цветная рамка, описание, счётчик)
     pw.Widget quadrantCard(MoodCategory cat, String desc) {
@@ -297,20 +346,26 @@ class ExportService {
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text(_categoryLabel(cat),
-                  style: pw.TextStyle(
-                      font: ttf,
-                      fontSize: 11,
-                      fontWeight: pw.FontWeight.bold)),
+              pw.Text(
+                _categoryLabel(cat),
+                style: pw.TextStyle(
+                  font: ttf,
+                  fontSize: 11,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
               pw.SizedBox(height: 3),
               pw.Text(desc, style: small),
               pw.SizedBox(height: 6),
-              pw.Text('$count · $pct',
-                  style: pw.TextStyle(
-                      font: ttf,
-                      fontSize: 13,
-                      fontWeight: pw.FontWeight.bold,
-                      color: color)),
+              pw.Text(
+                '$count · $pct',
+                style: pw.TextStyle(
+                  font: ttf,
+                  fontSize: 13,
+                  fontWeight: pw.FontWeight.bold,
+                  color: color,
+                ),
+              ),
             ],
           ),
         ),
@@ -321,30 +376,28 @@ class ExportService {
     const barMaxW = 130.0;
     const barH = 8.0;
     pw.Widget inlineBar(double pct, PdfColor color) => pw.Stack(
-          children: [
-            pw.Container(
-                width: barMaxW,
-                height: barH,
-                decoration:
-                    const pw.BoxDecoration(color: PdfColors.grey200)),
-            if (pct > 0)
-              pw.Container(
-                  width: barMaxW * pct.clamp(0.0, 1.0),
-                  height: barH,
-                  decoration: pw.BoxDecoration(color: color)),
-          ],
-        );
+      children: [
+        pw.Container(
+          width: barMaxW,
+          height: barH,
+          decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+        ),
+        if (pct > 0)
+          pw.Container(
+            width: barMaxW * pct.clamp(0.0, 1.0),
+            height: barH,
+            decoration: pw.BoxDecoration(color: color),
+          ),
+      ],
+    );
 
     // Строка: название + бар + правый лейбл
-    pw.Widget barRow(
-            String label, double pct, PdfColor color, String right) =>
+    pw.Widget barRow(String label, double pct, PdfColor color, String right) =>
         pw.Padding(
           padding: const pw.EdgeInsets.only(bottom: 6),
           child: pw.Row(
             children: [
-              pw.SizedBox(
-                  width: 120,
-                  child: pw.Text(label, style: base)),
+              pw.SizedBox(width: 120, child: pw.Text(label, style: base)),
               pw.SizedBox(width: 8),
               inlineBar(pct, color),
               pw.SizedBox(width: 8),
@@ -437,35 +490,48 @@ class ExportService {
 
     // Страница квадрантов + топ настроений (общая для год / неделя / месяц)
     List<pw.Widget> detailsPage() => [
-          sectionH('Квадранты настроения',
-              subtitle:
-                  'Настроения делятся на 4 типа по уровню энергии и знаку'),
-          pw.Row(children: [
-            quadrantCard(
-                MoodCategory.positiveActive, 'радость, восторг, энтузиазм'),
-            quadrantCard(MoodCategory.positiveCalm, 'покой, гармония, комфорт'),
-          ]),
-          pw.SizedBox(height: 8),
-          pw.Row(children: [
-            quadrantCard(
-                MoodCategory.negativeActive, 'злость, тревога, раздражение'),
-            quadrantCard(
-                MoodCategory.negativeCalm, 'грусть, апатия, одиночество'),
-          ]),
-          pw.SizedBox(height: 32),
-          if (total > 0) ...[
-            sectionH('Распределение по квадрантам'),
-            _buildQuadrantBars(quadrants, ttf),
-            pw.SizedBox(height: 32),
-          ],
-          sectionH('Топ настроений'),
-          ...top5.map((e) => barRow(
-                e.key,
-                e.value / maxMoodCount,
-                _toPdfColor(colorForMood(e.key)),
-                '${e.value} · ${_pct(e.value, total)}',
-              )),
-        ];
+      sectionH(
+        'Квадранты настроения',
+        subtitle: 'Настроения делятся на 4 типа по уровню энергии и знаку',
+      ),
+      pw.Row(
+        children: [
+          quadrantCard(
+            MoodCategory.positiveActive,
+            'радость, восторг, энтузиазм',
+          ),
+          quadrantCard(MoodCategory.positiveCalm, 'покой, гармония, комфорт'),
+        ],
+      ),
+      pw.SizedBox(height: 8),
+      pw.Row(
+        children: [
+          quadrantCard(
+            MoodCategory.negativeActive,
+            'злость, тревога, раздражение',
+          ),
+          quadrantCard(
+            MoodCategory.negativeCalm,
+            'грусть, апатия, одиночество',
+          ),
+        ],
+      ),
+      pw.SizedBox(height: 32),
+      if (total > 0) ...[
+        sectionH('Распределение по квадрантам'),
+        _buildQuadrantBars(quadrants, ttf),
+        pw.SizedBox(height: 32),
+      ],
+      sectionH('Топ настроений'),
+      ...top5.map(
+        (e) => barRow(
+          e.key,
+          e.value / maxMoodCount,
+          _toPdfColor(colorForMood(e.key)),
+          '${e.value} · ${_pct(e.value, total)}',
+        ),
+      ),
+    ];
 
     // ═══════════════════════════════════════════
     final pdf = pw.Document();
@@ -477,23 +543,29 @@ class ExportService {
       final year = from.year;
 
       // Группируем entries по месяцам — без повторного DB-запроса
-      final byMonth = List.generate(12, (_) => <MoodCategory, int>{
-        MoodCategory.negativeActive: 0,
-        MoodCategory.positiveActive: 0,
-        MoodCategory.negativeCalm: 0,
-        MoodCategory.positiveCalm: 0,
-      });
+      final byMonth = List.generate(
+        12,
+        (_) => <MoodCategory, int>{
+          MoodCategory.negativeActive: 0,
+          MoodCategory.positiveActive: 0,
+          MoodCategory.negativeCalm: 0,
+          MoodCategory.positiveCalm: 0,
+        },
+      );
       for (final e in entries) {
         final m = e.entry.createdAt.month - 1;
         byMonth[m][e.mood.category] = (byMonth[m][e.mood.category] ?? 0) + 1;
       }
-      final yearData = List.generate(12, (i) => MonthQuadrantData(
-        DateTime(year, i + 1, 1),
-        negativeActive: byMonth[i][MoodCategory.negativeActive]!,
-        positiveActive: byMonth[i][MoodCategory.positiveActive]!,
-        negativeCalm: byMonth[i][MoodCategory.negativeCalm]!,
-        positiveCalm: byMonth[i][MoodCategory.positiveCalm]!,
-      ));
+      final yearData = List.generate(
+        12,
+        (i) => MonthQuadrantData(
+          DateTime(year, i + 1, 1),
+          negativeActive: byMonth[i][MoodCategory.negativeActive]!,
+          positiveActive: byMonth[i][MoodCategory.positiveActive]!,
+          negativeCalm: byMonth[i][MoodCategory.negativeCalm]!,
+          positiveCalm: byMonth[i][MoodCategory.positiveCalm]!,
+        ),
+      );
 
       final activeMonths = yearData.where((m) => m.total > 0).length;
       final yearTotal = yearData.fold(0, (s, m) => s + m.total);
@@ -502,8 +574,11 @@ class ExportService {
       MapEntry<DateTime, double>? bestMonth;
       for (final m in yearData) {
         if (m.total == 0) continue;
-        final score = (m.positiveActive + m.positiveCalm -
-                m.negativeActive - m.negativeCalm) /
+        final score =
+            (m.positiveActive +
+                m.positiveCalm -
+                m.negativeActive -
+                m.negativeCalm) /
             m.total;
         if (bestMonth == null || score > bestMonth.value) {
           bestMonth = MapEntry(m.month, score);
@@ -511,11 +586,12 @@ class ExportService {
       }
 
       // Самый активный месяц
-      final mostActive =
-          yearData.where((m) => m.total > 0).fold<MonthQuadrantData?>(
-        null,
-        (prev, m) => prev == null || m.total > prev.total ? m : prev,
-      );
+      final mostActive = yearData
+          .where((m) => m.total > 0)
+          .fold<MonthQuadrantData?>(
+            null,
+            (prev, m) => prev == null || m.total > prev.total ? m : prev,
+          );
 
       final yearInsights = <String>[
         if (total > 0) 'Общий тон года: ${_moodLabel(avgMood)}.',
@@ -571,132 +647,154 @@ class ExportService {
             ),
       ];
 
-      pdf.addPage(pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(40),
-        theme: pw.ThemeData.withFont(base: ttf),
-        build: (ctx) => [
-          // ── Стр. 1: Обзор года ──
-          pw.Text('Год в настроениях', style: h1),
-          pw.SizedBox(height: 6),
-          pw.Text('$year', style: grey),
-          pw.Divider(height: 32, color: PdfColors.grey300),
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(40),
+          theme: pw.ThemeData.withFont(base: ttf),
+          build: (ctx) => [
+            // ── Стр. 1: Обзор года ──
+            pw.Text('Год в настроениях', style: h1),
+            pw.SizedBox(height: 6),
+            pw.Text('$year', style: grey),
+            pw.Divider(height: 32, color: PdfColors.grey300),
 
-          pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-            statCard('Записей за год', '$yearTotal'),
-            pw.SizedBox(width: 8),
-            statCard('Активных месяцев', '$activeMonths / 12'),
-            pw.SizedBox(width: 8),
-            statCard('Средний тон', _moodLabel(avgMood)),
-          ]),
-          pw.SizedBox(height: 32),
-
-          sectionH('Динамика по месяцам',
-              subtitle: 'Количество записей по квадрантам настроений'),
-
-          // 100% stacked bar по месяцам: все столбики одной высоты (90pt),
-          // сегменты отражают долю каждого квадранта внутри месяца.
-          // Месяц без записей — пустой серый столбик той же высоты.
-          pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
             pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.end,
-              children: List.generate(12, (i) {
-                final m = yearData[i];
-                const fullH = 90.0;
-                const slotW = 515.0 / 12;
-                const bw = slotW * 0.65;
-                if (m.total == 0) {
-                  // Нет данных — серый пустой столбик
-                  return pw.SizedBox(
-                    width: slotW,
-                    child: pw.Center(
-                      child: pw.Container(
-                          width: bw,
-                          height: fullH,
-                          decoration:
-                              const pw.BoxDecoration(color: PdfColors.grey200)),
-                    ),
-                  );
-                }
-                // Высота каждого сегмента = доля * fullH
-                final t = m.total.toDouble();
-                return pw.SizedBox(
-                  width: slotW,
-                  child: pw.Column(
-                    mainAxisAlignment: pw.MainAxisAlignment.end,
-                    children: [
-                      if (m.positiveActive > 0)
-                        pw.Container(
-                            width: bw,
-                            height: m.positiveActive / t * fullH,
-                            decoration: pw.BoxDecoration(color: paColor)),
-                      if (m.positiveCalm > 0)
-                        pw.Container(
-                            width: bw,
-                            height: m.positiveCalm / t * fullH,
-                            decoration: pw.BoxDecoration(color: pcColor)),
-                      if (m.negativeCalm > 0)
-                        pw.Container(
-                            width: bw,
-                            height: m.negativeCalm / t * fullH,
-                            decoration: pw.BoxDecoration(color: ncColor)),
-                      if (m.negativeActive > 0)
-                        pw.Container(
-                            width: bw,
-                            height: m.negativeActive / t * fullH,
-                            decoration: pw.BoxDecoration(color: naColor)),
-                    ],
-                  ),
-                );
-              }),
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                statCard('Записей за год', '$yearTotal'),
+                pw.SizedBox(width: 8),
+                statCard('Активных месяцев', '$activeMonths / 12'),
+                pw.SizedBox(width: 8),
+                statCard('Средний тон', _moodLabel(avgMood)),
+              ],
             ),
-            // Подписи месяцев
-            pw.Row(
-              children: List.generate(12, (i) {
-                final label = DateFormat('LLL', 'ru')
-                    .format(DateTime(year, i + 1))
-                    .replaceAll('.', '');
-                return pw.SizedBox(
-                  width: 515.0 / 12,
-                  child: pw.Center(
-                    child: pw.Text(label,
-                        style: pw.TextStyle(
+            pw.SizedBox(height: 32),
+
+            sectionH(
+              'Динамика по месяцам',
+              subtitle: 'Количество записей по квадрантам настроений',
+            ),
+
+            // 100% stacked bar по месяцам: все столбики одной высоты (90pt),
+            // сегменты отражают долю каждого квадранта внутри месяца.
+            // Месяц без записей — пустой серый столбик той же высоты.
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: List.generate(12, (i) {
+                    final m = yearData[i];
+                    const fullH = 90.0;
+                    const slotW = 515.0 / 12;
+                    const bw = slotW * 0.65;
+                    if (m.total == 0) {
+                      // Нет данных — серый пустой столбик
+                      return pw.SizedBox(
+                        width: slotW,
+                        child: pw.Center(
+                          child: pw.Container(
+                            width: bw,
+                            height: fullH,
+                            decoration: const pw.BoxDecoration(
+                              color: PdfColors.grey200,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                    // Высота каждого сегмента = доля * fullH
+                    final t = m.total.toDouble();
+                    return pw.SizedBox(
+                      width: slotW,
+                      child: pw.Column(
+                        mainAxisAlignment: pw.MainAxisAlignment.end,
+                        children: [
+                          if (m.positiveActive > 0)
+                            pw.Container(
+                              width: bw,
+                              height: m.positiveActive / t * fullH,
+                              decoration: pw.BoxDecoration(color: paColor),
+                            ),
+                          if (m.positiveCalm > 0)
+                            pw.Container(
+                              width: bw,
+                              height: m.positiveCalm / t * fullH,
+                              decoration: pw.BoxDecoration(color: pcColor),
+                            ),
+                          if (m.negativeCalm > 0)
+                            pw.Container(
+                              width: bw,
+                              height: m.negativeCalm / t * fullH,
+                              decoration: pw.BoxDecoration(color: ncColor),
+                            ),
+                          if (m.negativeActive > 0)
+                            pw.Container(
+                              width: bw,
+                              height: m.negativeActive / t * fullH,
+                              decoration: pw.BoxDecoration(color: naColor),
+                            ),
+                        ],
+                      ),
+                    );
+                  }),
+                ),
+                // Подписи месяцев
+                pw.Row(
+                  children: List.generate(12, (i) {
+                    final label = DateFormat(
+                      'LLL',
+                      'ru',
+                    ).format(DateTime(year, i + 1)).replaceAll('.', '');
+                    return pw.SizedBox(
+                      width: 515.0 / 12,
+                      child: pw.Center(
+                        child: pw.Text(
+                          label,
+                          style: pw.TextStyle(
                             font: ttf,
                             fontSize: 7,
-                            color: PdfColors.grey600)),
-                  ),
-                );
-              }),
+                            color: PdfColors.grey600,
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ],
             ),
-          ]),
 
-          // Легенда
-          pw.SizedBox(height: 14),
-          pw.Row(children: [
-            _legendItem(paColor, 'Акт. позитивное', ttf),
-            pw.SizedBox(width: 10),
-            _legendItem(pcColor, 'Спок. позитивное', ttf),
-            pw.SizedBox(width: 10),
-            _legendItem(ncColor, 'Спок. негативное', ttf),
-            pw.SizedBox(width: 10),
-            _legendItem(naColor, 'Акт. негативное', ttf),
-          ]),
+            // Легенда
+            pw.SizedBox(height: 14),
+            pw.Row(
+              children: [
+                _legendItem(paColor, 'Акт. позитивное', ttf),
+                pw.SizedBox(width: 10),
+                _legendItem(pcColor, 'Спок. позитивное', ttf),
+                pw.SizedBox(width: 10),
+                _legendItem(ncColor, 'Спок. негативное', ttf),
+                pw.SizedBox(width: 10),
+                _legendItem(naColor, 'Акт. негативное', ttf),
+              ],
+            ),
 
-          pw.SizedBox(height: 28),
-          if (yearInsights.isNotEmpty) insightBlock(yearInsights),
+            pw.SizedBox(height: 28),
+            if (yearInsights.isNotEmpty) insightBlock(yearInsights),
 
-          // ── Стр. 2: Детали ──
-          pw.NewPage(),
-          ...detailsPage(),
+            // ── Стр. 2: Детали ──
+            pw.NewPage(),
+            ...detailsPage(),
 
-          // ── Стр. 3: Корреляции ──
-          pw.NewPage(),
-          ...corrPage(
-            yearCorrData,
-            (d) => DateFormat('LLL', 'ru').format(d).replaceAll('.', ''),
-          ),
-        ],
-      ));
+            // ── Стр. 3: Корреляции ──
+            pw.NewPage(),
+            ...corrPage(
+              yearCorrData,
+              (d) => DateFormat('LLL', 'ru').format(d).replaceAll('.', ''),
+            ),
+          ],
+        ),
+      );
     } else {
       // ──────────────────────────────────────────
       // НЕДЕЛЯ / МЕСЯЦ: 2 страницы
@@ -711,33 +809,40 @@ class ExportService {
         byDayX.putIfAbsent(day, () => []).add(e.mood.x);
         byDayEntries.putIfAbsent(day, () => []).add(e);
       }
-      final timeline = (byDayX.entries.toList()
-            ..sort((a, b) => a.key.compareTo(b.key)))
-          .map((e) {
-        final avg = e.value.reduce((a, b) => a + b) / e.value.length;
-        return TimePoint(e.key, avg);
-      }).toList();
+      final timeline =
+          (byDayX.entries.toList()..sort((a, b) => a.key.compareTo(b.key))).map(
+            (e) {
+              final avg = e.value.reduce((a, b) => a + b) / e.value.length;
+              return TimePoint(e.key, avg);
+            },
+          ).toList();
 
       // DayStats: тип дня — из тех же сгруппированных данных
-      final dayStats = (byDayEntries.entries.toList()
-            ..sort((a, b) => a.key.compareTo(b.key)))
-          .map((e) {
-        final dayEntries = e.value;
-        final avg = dayEntries.map((x) => x.mood.x).reduce((a, b) => a + b) /
-            dayEntries.length;
-        return DayStats(e.key, avg, _calcDayType(dayEntries));
-      }).toList();
+      final dayStats =
+          (byDayEntries.entries.toList()
+                ..sort((a, b) => a.key.compareTo(b.key)))
+              .map((e) {
+                final dayEntries = e.value;
+                final avg =
+                    dayEntries.map((x) => x.mood.x).reduce((a, b) => a + b) /
+                    dayEntries.length;
+                return DayStats(e.key, avg, _calcDayType(dayEntries));
+              })
+              .toList();
 
       final daysWithEntries = timeline.length;
       final totalDays = to.difference(from).inDays + 1;
       final isWeek = totalDays <= 7;
 
-      final stableCount =
-          dayStats.where((d) => d.dayType == DayType.stable).length;
-      final balancedCount =
-          dayStats.where((d) => d.dayType == DayType.balanced).length;
-      final contrastCount =
-          dayStats.where((d) => d.dayType == DayType.contrast).length;
+      final stableCount = dayStats
+          .where((d) => d.dayType == DayType.stable)
+          .length;
+      final balancedCount = dayStats
+          .where((d) => d.dayType == DayType.balanced)
+          .length;
+      final contrastCount = dayStats
+          .where((d) => d.dayType == DayType.contrast)
+          .length;
       final dayTotal = dayStats.length;
 
       // Инсайты периода
@@ -747,11 +852,7 @@ class ExportService {
           '$positiveDays из ${timeline.length} ${_pluralDays(timeline.length)} '
               'были позитивными.',
         if (timeline.isNotEmpty)
-          'Лучший день — ${DateFormat('EEEE, dd.MM.yyyy', 'ru').format(
-            timeline.reduce((a, b) => a.value >= b.value ? a : b).time,
-          )} (${_moodLabel(
-            timeline.reduce((a, b) => a.value >= b.value ? a : b).value,
-          )}).',
+          'Лучший день — ${DateFormat('EEEE, dd.MM.yyyy', 'ru').format(timeline.reduce((a, b) => a.value >= b.value ? a : b).time)} (${_moodLabel(timeline.reduce((a, b) => a.value >= b.value ? a : b).value)}).',
         if (contrastCount > 0)
           '$contrastCount ${_pluralDays(contrastCount)}  '
               'с резкими перепадами настроения.',
@@ -761,89 +862,101 @@ class ExportService {
       final shortLabels = timeline.length <= 7;
 
       // ── Корреляционные данные по дням (для 3-й страницы) ──
-      final corrData = (dayAvgMood.entries.toList()
-            ..sort((a, b) => a.key.compareTo(b.key)))
-          .map((kv) {
-        final h = healthByDay[kv.key];
-        return _DayCorr(
-          kv.key,
-          kv.value,
-          sleep:
-              h?.sleepMinutes != null ? h!.sleepMinutes! / 60.0 : null,
-          steps: h?.stepsAmount?.toDouble(),
-          cyclePhase: h?.cyclePhase,
-        );
-      }).toList();
+      final corrData =
+          (dayAvgMood.entries.toList()..sort((a, b) => a.key.compareTo(b.key)))
+              .map((kv) {
+                final h = healthByDay[kv.key];
+                return _DayCorr(
+                  kv.key,
+                  kv.value,
+                  sleep: h?.sleepMinutes != null
+                      ? h!.sleepMinutes! / 60.0
+                      : null,
+                  steps: h?.stepsAmount?.toDouble(),
+                  cyclePhase: h?.cyclePhase,
+                );
+              })
+              .toList();
       final corrLabel = shortLabels
           ? (DateTime d) => DateFormat('EE', 'ru').format(d)
           : (DateTime d) => d.day.toString();
 
-      pdf.addPage(pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(40),
-        theme: pw.ThemeData.withFont(base: ttf),
-        build: (ctx) => [
-          // ── Стр. 1: Обзор ──
-          pw.Text('Аналитика настроения', style: h1),
-          pw.SizedBox(height: 6),
-          pw.Text(periodLabel, style: grey),
-          pw.Divider(height: 32, color: PdfColors.grey300),
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(40),
+          theme: pw.ThemeData.withFont(base: ttf),
+          build: (ctx) => [
+            // ── Стр. 1: Обзор ──
+            pw.Text('Аналитика настроения', style: h1),
+            pw.SizedBox(height: 6),
+            pw.Text(periodLabel, style: grey),
+            pw.Divider(height: 32, color: PdfColors.grey300),
 
-          pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-            statCard('Записей', '$total'),
-            pw.SizedBox(width: 8),
-            statCard('Средний тон', _moodLabel(avgMood)),
-            pw.SizedBox(width: 8),
-            statCard('Дней с записями', '$daysWithEntries / $totalDays'),
-          ]),
-          pw.SizedBox(height: 32),
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                statCard('Записей', '$total'),
+                pw.SizedBox(width: 8),
+                statCard('Средний тон', _moodLabel(avgMood)),
+                pw.SizedBox(width: 8),
+                statCard('Дней с записями', '$daysWithEntries / $totalDays'),
+              ],
+            ),
+            pw.SizedBox(height: 32),
 
-          sectionH('Динамика настроения'),
-          if (dayStats.isNotEmpty) ...[
-            if (isWeek)
-              _buildWeekChart(dayStats, ttf)
-            else
-              _buildMonthCalendar(dayStats, from, ttf),
-            pw.SizedBox(height: 24),
-          ] else if (timeline.isNotEmpty) ...[
-            _timelineBarChart(timeline, ttf, shortLabels),
-            pw.SizedBox(height: 20),
-          ],
-          if (insights.isNotEmpty) insightBlock(insights),
+            sectionH('Динамика настроения'),
+            if (dayStats.isNotEmpty) ...[
+              if (isWeek)
+                _buildWeekChart(dayStats, ttf)
+              else
+                _buildMonthCalendar(dayStats, from, ttf),
+              pw.SizedBox(height: 24),
+            ] else if (timeline.isNotEmpty) ...[
+              _timelineBarChart(timeline, ttf, shortLabels),
+              pw.SizedBox(height: 20),
+            ],
+            if (insights.isNotEmpty) insightBlock(insights),
 
-          // ── Стр. 2: Детали ──
-          pw.NewPage(),
-          ...detailsPage(),
+            // ── Стр. 2: Детали ──
+            pw.NewPage(),
+            ...detailsPage(),
 
-          pw.SizedBox(height: 32),
-          sectionH('Типы дней',
-              subtitle: 'Как сильно менялось настроение в течение дня'),
-          if (dayTotal > 0) ...[
-            barRow(
+            pw.SizedBox(height: 32),
+            sectionH(
+              'Типы дней',
+              subtitle: 'Как сильно менялось настроение в течение дня',
+            ),
+            if (dayTotal > 0) ...[
+              barRow(
                 'Стабильный',
                 stableCount / dayTotal,
                 stableColor,
                 '$stableCount ${_pluralDays(stableCount)} · '
-                    '${_pct(stableCount, dayTotal)}'),
-            barRow(
+                    '${_pct(stableCount, dayTotal)}',
+              ),
+              barRow(
                 'Сбалансированный',
                 balancedCount / dayTotal,
                 balancedColor,
                 '$balancedCount ${_pluralDays(balancedCount)} · '
-                    '${_pct(balancedCount, dayTotal)}'),
-            barRow(
+                    '${_pct(balancedCount, dayTotal)}',
+              ),
+              barRow(
                 'Контрастный',
                 contrastCount / dayTotal,
                 contrastColor,
                 '$contrastCount ${_pluralDays(contrastCount)} · '
-                    '${_pct(contrastCount, dayTotal)}'),
-          ],
+                    '${_pct(contrastCount, dayTotal)}',
+              ),
+            ],
 
-          // ── Стр. 3: Корреляции ──
-          pw.NewPage(),
-          ...corrPage(corrData, corrLabel),
-        ],
-      ));
+            // ── Стр. 3: Корреляции ──
+            pw.NewPage(),
+            ...corrPage(corrData, corrLabel),
+          ],
+        ),
+      );
     }
 
     return pdf.save();
@@ -857,7 +970,10 @@ class ExportService {
   // Положительные значения — зелёный столбец вверх от центра,
   // отрицательные — красный вниз. Ось Y подписана слева.
   pw.Widget _timelineBarChart(
-      List<TimePoint> timeline, pw.Font ttf, bool shortLabels) {
+    List<TimePoint> timeline,
+    pw.Font ttf,
+    bool shortLabels,
+  ) {
     const chartH = 75.0;
     const yLabelW = 22.0;
     // Доступная ширина страницы минус поля (40+40) = 515pt, минус Y-ось
@@ -887,15 +1003,30 @@ class ExportService {
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: pw.CrossAxisAlignment.end,
                 children: [
-                  pw.Text('+1',
-                      style: pw.TextStyle(
-                          font: ttf, fontSize: 8, color: PdfColors.grey500)),
-                  pw.Text(' 0',
-                      style: pw.TextStyle(
-                          font: ttf, fontSize: 8, color: PdfColors.grey500)),
-                  pw.Text('-1',
-                      style: pw.TextStyle(
-                          font: ttf, fontSize: 8, color: PdfColors.grey500)),
+                  pw.Text(
+                    '+1',
+                    style: pw.TextStyle(
+                      font: ttf,
+                      fontSize: 8,
+                      color: PdfColors.grey500,
+                    ),
+                  ),
+                  pw.Text(
+                    ' 0',
+                    style: pw.TextStyle(
+                      font: ttf,
+                      fontSize: 8,
+                      color: PdfColors.grey500,
+                    ),
+                  ),
+                  pw.Text(
+                    '-1',
+                    style: pw.TextStyle(
+                      font: ttf,
+                      fontSize: 8,
+                      color: PdfColors.grey500,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -926,7 +1057,11 @@ class ExportService {
                   // Положит.: от centerY вверх (y+ = UP в PDF)
                   // Отрицат.: от centerY-barH вверх до centerY
                   canvas.drawRect(
-                      x, v >= 0 ? centerY : centerY - barH, barW, barH);
+                    x,
+                    v >= 0 ? centerY : centerY - barH,
+                    barW,
+                    barH,
+                  );
                   canvas.fillPath();
                 }
               },
@@ -945,7 +1080,10 @@ class ExportService {
                   child: pw.Text(
                     xLabels[i],
                     style: pw.TextStyle(
-                        font: ttf, fontSize: 7, color: PdfColors.grey500),
+                      font: ttf,
+                      fontSize: 7,
+                      color: PdfColors.grey500,
+                    ),
                   ),
                 ),
               ),
@@ -957,20 +1095,21 @@ class ExportService {
   }
 
   // Маленький цветной квадрат + подпись для легенды годового графика
-  pw.Widget _legendItem(PdfColor color, String label, pw.Font ttf) =>
-      pw.Row(
-        mainAxisSize: pw.MainAxisSize.min,
-        children: [
-          pw.Container(
-              width: 8,
-              height: 8,
-              decoration: pw.BoxDecoration(color: color)),
-          pw.SizedBox(width: 4),
-          pw.Text(label,
-              style: pw.TextStyle(
-                  font: ttf, fontSize: 9, color: PdfColors.grey600)),
-        ],
-      );
+  pw.Widget _legendItem(PdfColor color, String label, pw.Font ttf) => pw.Row(
+    mainAxisSize: pw.MainAxisSize.min,
+    children: [
+      pw.Container(
+        width: 8,
+        height: 8,
+        decoration: pw.BoxDecoration(color: color),
+      ),
+      pw.SizedBox(width: 4),
+      pw.Text(
+        label,
+        style: pw.TextStyle(font: ttf, fontSize: 9, color: PdfColors.grey600),
+      ),
+    ],
+  );
 
   // ─────────────────────────────────────────────────
   // Текстовые хелперы
@@ -992,10 +1131,12 @@ class ExportService {
     if (dayEntries.length <= 1) return DayType.stable;
     final cats = dayEntries.map((e) => e.mood.category).toSet();
     if (cats.length == 1) return DayType.stable;
-    final allPositive = cats.every((c) =>
-        c == MoodCategory.positiveActive || c == MoodCategory.positiveCalm);
-    final allNegative = cats.every((c) =>
-        c == MoodCategory.negativeActive || c == MoodCategory.negativeCalm);
+    final allPositive = cats.every(
+      (c) => c == MoodCategory.positiveActive || c == MoodCategory.positiveCalm,
+    );
+    final allNegative = cats.every(
+      (c) => c == MoodCategory.negativeActive || c == MoodCategory.negativeCalm,
+    );
     if (allPositive || allNegative) return DayType.balanced;
     return DayType.contrast;
   }
@@ -1023,11 +1164,11 @@ class ExportService {
   // ─────────────────────────────────────────────────
 
   String _categoryLabel(MoodCategory cat) => switch (cat) {
-        MoodCategory.positiveActive => 'Активное позитивное',
-        MoodCategory.positiveCalm => 'Спокойное позитивное',
-        MoodCategory.negativeActive => 'Активное негативное',
-        MoodCategory.negativeCalm => 'Спокойное негативное',
-      };
+    MoodCategory.positiveActive => 'Активное позитивное',
+    MoodCategory.positiveCalm => 'Спокойное позитивное',
+    MoodCategory.negativeActive => 'Активное негативное',
+    MoodCategory.negativeCalm => 'Спокойное негативное',
+  };
 
   String _pct(int count, int total) =>
       total > 0 ? '${(count / total * 100).toStringAsFixed(1)}%' : '0%';
@@ -1036,7 +1177,12 @@ class ExportService {
   // PDF: дневной отчёт с тегами и контекстом
   // ─────────────────────────────────────────────────
 
-  Future<List<int>> exportDayToPdfBytes(DateTime day, {bool trackCycle = false}) async {
+  Future<List<int>> exportDayToPdfBytes(
+    DateTime day, {
+    bool trackCycle = false,
+  }) async {
+    await _ensureExportAccess();
+
     final from = DateTime(day.year, day.month, day.day);
     final to = DateTime(day.year, day.month, day.day, 23, 59, 59);
 
@@ -1060,18 +1206,23 @@ class ExportService {
         ? await _repo.getWeatherForEntry(rawEntries.first.entry.id)
         : null;
 
-
-    final fontData =
-        await rootBundle.load('lib/ui/assets/fonts/Inter-Regular.ttf');
+    final fontData = await rootBundle.load(
+      'lib/ui/assets/fonts/Inter-Regular.ttf',
+    );
     final ttf = pw.Font.ttf(fontData.buffer.asByteData());
 
     final base = pw.TextStyle(font: ttf, fontSize: 11);
     final h1 = pw.TextStyle(
-        font: ttf, fontSize: 20, fontWeight: pw.FontWeight.bold);
+      font: ttf,
+      fontSize: 20,
+      fontWeight: pw.FontWeight.bold,
+    );
     final h2 = pw.TextStyle(
-        font: ttf, fontSize: 13, fontWeight: pw.FontWeight.bold);
+      font: ttf,
+      fontSize: 13,
+      fontWeight: pw.FontWeight.bold,
+    );
     final grey = base.copyWith(color: PdfColors.grey600);
-
 
     final dayTitle = DateFormat('EEEE, d MMMM yyyy', 'ru').format(day);
 
@@ -1096,7 +1247,12 @@ class ExportService {
             pw.Wrap(
               spacing: 8,
               runSpacing: 6,
-              children: _buildContextChips(health, dayWeather, ttf, trackCycle: trackCycle),
+              children: _buildContextChips(
+                health,
+                dayWeather,
+                ttf,
+                trackCycle: trackCycle,
+              ),
             ),
             pw.SizedBox(height: 20),
           ],
@@ -1139,20 +1295,19 @@ class ExportService {
   // В новом Flutter API .r/.g/.b уже возвращают double 0.0–1.0 — передаём напрямую.
   PdfColor _toPdfColor(Color c) => PdfColor(c.r, c.g, c.b);
 
-
   // Единый чип — белый фон, тёмно-серая рамка. Используется везде.
   pw.Widget _chip(String label, pw.Font ttf) => pw.Container(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: pw.BoxDecoration(
-          color: PdfColors.white,
-          border: pw.Border.all(color: PdfColors.grey600, width: 0.7),
-          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-        ),
-        child: pw.Text(
-          label,
-          style: pw.TextStyle(font: ttf, fontSize: 11, color: PdfColors.black),
-        ),
-      );
+    padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: pw.BoxDecoration(
+      color: PdfColors.white,
+      border: pw.Border.all(color: PdfColors.grey600, width: 0.7),
+      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+    ),
+    child: pw.Text(
+      label,
+      style: pw.TextStyle(font: ttf, fontSize: 11, color: PdfColors.black),
+    ),
+  );
 
   // Собирает список чипов для блока "Контекст дня".
   List<pw.Widget> _buildContextChips(
@@ -1232,11 +1387,14 @@ class ExportService {
               // Чип настроения: белый фон + цветная рамка + черный текст
               pw.Container(
                 padding: const pw.EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 3),
+                  horizontal: 8,
+                  vertical: 3,
+                ),
                 decoration: pw.BoxDecoration(
                   border: pw.Border.all(color: moodColor, width: 1),
-                  borderRadius:
-                      const pw.BorderRadius.all(pw.Radius.circular(4)),
+                  borderRadius: const pw.BorderRadius.all(
+                    pw.Radius.circular(4),
+                  ),
                 ),
                 child: pw.Text(
                   e.item.mood.name,
@@ -1256,7 +1414,6 @@ class ExportService {
             ],
           ),
 
-
           if (e.tags.isNotEmpty) ...[
             pw.SizedBox(height: 4),
             pw.Padding(
@@ -1264,9 +1421,7 @@ class ExportService {
               child: pw.Wrap(
                 spacing: 6,
                 runSpacing: 4,
-                children: e.tags
-                    .map((t) => _chip(t.name, ttf))
-                    .toList(),
+                children: e.tags.map((t) => _chip(t.name, ttf)).toList(),
               ),
             ),
           ],
@@ -1280,9 +1435,11 @@ class ExportService {
     if (entries.isEmpty) return 'За этот день записей нет.';
 
     final positiveCount = entries
-        .where((e) =>
-            e.mood.category == MoodCategory.positiveActive ||
-            e.mood.category == MoodCategory.positiveCalm)
+        .where(
+          (e) =>
+              e.mood.category == MoodCategory.positiveActive ||
+              e.mood.category == MoodCategory.positiveCalm,
+        )
         .length;
     final total = entries.length;
     final pct = (positiveCount / total * 100).round();
@@ -1313,20 +1470,20 @@ class ExportService {
   }
 
   String _tempCatLabel(TemperatureCategory cat) => switch (cat) {
-        TemperatureCategory.veryCold => 'Очень холодно (\u2264\u221225\u00B0C)',
-        TemperatureCategory.cold => 'Холодно (\u221225..\u221210\u00B0C)',
-        TemperatureCategory.cool => 'Прохладно (\u221210..+5\u00B0C)',
-        TemperatureCategory.comfortable => 'Комфортно (+5..+20\u00B0C)',
-        TemperatureCategory.warm => 'Тепло (+20..+30\u00B0C)',
-        TemperatureCategory.hot => 'Жарко (\u226530\u00B0C)',
-      };
+    TemperatureCategory.veryCold => 'Очень холодно (\u2264\u221225\u00B0C)',
+    TemperatureCategory.cold => 'Холодно (\u221225..\u221210\u00B0C)',
+    TemperatureCategory.cool => 'Прохладно (\u221210..+5\u00B0C)',
+    TemperatureCategory.comfortable => 'Комфортно (+5..+20\u00B0C)',
+    TemperatureCategory.warm => 'Тепло (+20..+30\u00B0C)',
+    TemperatureCategory.hot => 'Жарко (\u226530\u00B0C)',
+  };
 
   String _cycleLabel(CyclePhase phase) => switch (phase) {
-        CyclePhase.menstruation => 'Менструация',
-        CyclePhase.follicular => 'Фолликулярная фаза',
-        CyclePhase.ovulation => 'Овуляция',
-        CyclePhase.luteal => 'Лютеиновая фаза',
-      };
+    CyclePhase.menstruation => 'Менструация',
+    CyclePhase.follicular => 'Фолликулярная фаза',
+    CyclePhase.ovulation => 'Овуляция',
+    CyclePhase.luteal => 'Лютеиновая фаза',
+  };
 
   // ─────────────────────────────────────────────────
   // Графики аналитики для PDF
@@ -1339,7 +1496,10 @@ class ExportService {
   /// Scatter сон/шаги vs настроение. X=метрика, Y=настроение −1..+1.
   /// Точки окрашены по названию настроения (moodColors).
   pw.Widget _buildScatterChart(
-      List<ScatterPoint> points, String xUnit, pw.Font ttf) {
+    List<ScatterPoint> points,
+    String xUnit,
+    pw.Font ttf,
+  ) {
     if (points.isEmpty) return pw.SizedBox.shrink();
 
     const chartH = 100.0;
@@ -1349,8 +1509,7 @@ class ExportService {
     final xs = points.map((p) => p.x).toList();
     final rawMinX = xs.reduce((a, b) => a < b ? a : b);
     final rawMaxX = xs.reduce((a, b) => a > b ? a : b);
-    final xPad =
-        (rawMaxX - rawMinX) < 0.01 ? 1.0 : (rawMaxX - rawMinX) * 0.1;
+    final xPad = (rawMaxX - rawMinX) < 0.01 ? 1.0 : (rawMaxX - rawMinX) * 0.1;
     final minX = rawMinX - xPad;
     final maxX = rawMaxX + xPad;
 
@@ -1368,8 +1527,11 @@ class ExportService {
     double yM(double v) => chartH * (v.clamp(-1.0, 1.0) + 1.0) / 2.0;
     double xV(double v) => chartW * (v - minX) / (maxX - minX);
 
-    final labelStyle =
-        pw.TextStyle(font: ttf, fontSize: 7, color: PdfColors.grey500);
+    final labelStyle = pw.TextStyle(
+      font: ttf,
+      fontSize: 7,
+      color: PdfColors.grey500,
+    );
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -1383,9 +1545,11 @@ class ExportService {
               child: pw.Column(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: pw.CrossAxisAlignment.end,
-                children: ['+1', '0', '-1']
-                    .map((t) => pw.Text(t, style: labelStyle))
-                    .toList(),
+                children: [
+                  '+1',
+                  '0',
+                  '-1',
+                ].map((t) => pw.Text(t, style: labelStyle)).toList(),
               ),
             ),
             pw.SizedBox(width: 2),
@@ -1396,7 +1560,8 @@ class ExportService {
                 for (final val in [-1.0, -0.5, 0.0, 0.5, 1.0]) {
                   final y = yM(val);
                   canvas.setColor(
-                      val == 0.0 ? PdfColors.grey400 : PdfColors.grey200);
+                    val == 0.0 ? PdfColors.grey400 : PdfColors.grey200,
+                  );
                   canvas.setLineWidth(val == 0.0 ? 0.7 : 0.4);
                   canvas.moveTo(0, y);
                   canvas.lineTo(chartW, y);
@@ -1420,8 +1585,9 @@ class ExportService {
             children: [
               pw.Text('${rawMinX.toStringAsFixed(1)}$xUnit', style: labelStyle),
               pw.Text(
-                  '${((rawMinX + rawMaxX) / 2).toStringAsFixed(1)}$xUnit',
-                  style: labelStyle),
+                '${((rawMinX + rawMaxX) / 2).toStringAsFixed(1)}$xUnit',
+                style: labelStyle,
+              ),
               pw.Text('${rawMaxX.toStringAsFixed(1)}$xUnit', style: labelStyle),
             ],
           ),
@@ -1433,8 +1599,7 @@ class ExportService {
   /// Scatter погода vs настроение.
   /// X=категория температуры (0-5), Y=настроение −1..+1.
   /// Точки окрашены по moodName; метки X цветные как в приложении.
-  pw.Widget _buildWeatherScatterChart(
-      List<ScatterPoint> points, pw.Font ttf) {
+  pw.Widget _buildWeatherScatterChart(List<ScatterPoint> points, pw.Font ttf) {
     if (points.isEmpty) return pw.SizedBox.shrink();
 
     const chartH = 100.0;
@@ -1463,8 +1628,11 @@ class ExportService {
     double xC(double idx) => chartW * idx / 5.0;
     double yM(double v) => chartH * (v.clamp(-1.0, 1.0) + 1.0) / 2.0;
 
-    final labelStyle =
-        pw.TextStyle(font: ttf, fontSize: 7, color: PdfColors.grey500);
+    final labelStyle = pw.TextStyle(
+      font: ttf,
+      fontSize: 7,
+      color: PdfColors.grey500,
+    );
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -1478,9 +1646,11 @@ class ExportService {
               child: pw.Column(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: pw.CrossAxisAlignment.end,
-                children: ['+1', '0', '-1']
-                    .map((t) => pw.Text(t, style: labelStyle))
-                    .toList(),
+                children: [
+                  '+1',
+                  '0',
+                  '-1',
+                ].map((t) => pw.Text(t, style: labelStyle)).toList(),
               ),
             ),
             pw.SizedBox(width: 2),
@@ -1499,7 +1669,8 @@ class ExportService {
                 for (final val in [-1.0, -0.5, 0.0, 0.5, 1.0]) {
                   final y = yM(val);
                   canvas.setColor(
-                      val == 0.0 ? PdfColors.grey400 : PdfColors.grey200);
+                    val == 0.0 ? PdfColors.grey400 : PdfColors.grey200,
+                  );
                   canvas.setLineWidth(val == 0.0 ? 0.7 : 0.4);
                   canvas.moveTo(0, y);
                   canvas.lineTo(chartW, y);
@@ -1524,7 +1695,11 @@ class ExportService {
               6,
               (i) => pw.Text(
                 catLabels[i],
-                style: pw.TextStyle(font: ttf, fontSize: 8, color: catColors[i]),
+                style: pw.TextStyle(
+                  font: ttf,
+                  fontSize: 8,
+                  color: catColors[i],
+                ),
               ),
             ),
           ),
@@ -1550,8 +1725,7 @@ class ExportService {
   /// Scatter цикл vs настроение.
   /// X=настроение −1..+1, Y=фаза 0..3 (М внизу, Л вверху).
   /// Точки окрашены по названию настроения; лейблы фаз на оси Y цветные.
-  pw.Widget _buildCycleScatterChart(
-      List<ScatterPoint> points, pw.Font ttf) {
+  pw.Widget _buildCycleScatterChart(List<ScatterPoint> points, pw.Font ttf) {
     if (points.isEmpty) return pw.SizedBox.shrink();
 
     const chartH = 120.0; // чуть выше чтобы 4 строки читались
@@ -1561,10 +1735,10 @@ class ExportService {
     // Цвета фаз захардкожены напрямую в PdfColor (0.0–1.0)
     // М=0 Ф=1 О=2 Л=3
     final phaseColors = [
-      PdfColor(1.0,    0.4745, 0.4745),  // FF7979 — М красный
-      PdfColor(0.4,    1.0,    0.4),     // 66FF66 — Ф зелёный
-      PdfColor(1.0,    0.9216, 0.5373),  // FFEB89 — О жёлтый
-      PdfColor(0.7216, 0.6314, 1.0),     // B8A1FF — Л фиолетовый
+      PdfColor(1.0, 0.4745, 0.4745), // FF7979 — М красный
+      PdfColor(0.4, 1.0, 0.4), // 66FF66 — Ф зелёный
+      PdfColor(1.0, 0.9216, 0.5373), // FFEB89 — О жёлтый
+      PdfColor(0.7216, 0.6314, 1.0), // B8A1FF — Л фиолетовый
     ];
     const phaseLabels = ['М', 'Ф', 'О', 'Л'];
 
@@ -1584,8 +1758,11 @@ class ExportService {
     // Y: фаза 0(М)=низ, 3(Л)=верх → PDF Y=0 снизу
     double yP(double idx) => chartH * idx / 3.0;
 
-    final labelStyle =
-        pw.TextStyle(font: ttf, fontSize: 7, color: PdfColors.grey500);
+    final labelStyle = pw.TextStyle(
+      font: ttf,
+      fontSize: 7,
+      color: PdfColors.grey500,
+    );
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -1605,7 +1782,10 @@ class ExportService {
                   return pw.Text(
                     phaseLabels[idx],
                     style: pw.TextStyle(
-                        font: ttf, fontSize: 9, color: phaseColors[idx]),
+                      font: ttf,
+                      fontSize: 9,
+                      color: phaseColors[idx],
+                    ),
                   );
                 }),
               ),
@@ -1647,7 +1827,7 @@ class ExportService {
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
               pw.Text('−1', style: labelStyle),
-              pw.Text('0',  style: labelStyle),
+              pw.Text('0', style: labelStyle),
               pw.Text('+1', style: labelStyle),
             ],
           ),
@@ -1657,21 +1837,49 @@ class ExportService {
         pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.Row(children: [
-              pw.Text('М — Менструальная',
-                  style: pw.TextStyle(font: ttf, fontSize: 8, color: PdfColors.grey600)),
-              pw.SizedBox(width: 20),
-              pw.Text('Ф — Фолликулярная',
-                  style: pw.TextStyle(font: ttf, fontSize: 8, color: PdfColors.grey600)),
-            ]),
+            pw.Row(
+              children: [
+                pw.Text(
+                  'М — Менструальная',
+                  style: pw.TextStyle(
+                    font: ttf,
+                    fontSize: 8,
+                    color: PdfColors.grey600,
+                  ),
+                ),
+                pw.SizedBox(width: 20),
+                pw.Text(
+                  'Ф — Фолликулярная',
+                  style: pw.TextStyle(
+                    font: ttf,
+                    fontSize: 8,
+                    color: PdfColors.grey600,
+                  ),
+                ),
+              ],
+            ),
             pw.SizedBox(height: 4),
-            pw.Row(children: [
-              pw.Text('О — Овуляция',
-                  style: pw.TextStyle(font: ttf, fontSize: 8, color: PdfColors.grey600)),
-              pw.SizedBox(width: 20),
-              pw.Text('Л — Лютеиновая',
-                  style: pw.TextStyle(font: ttf, fontSize: 8, color: PdfColors.grey600)),
-            ]),
+            pw.Row(
+              children: [
+                pw.Text(
+                  'О — Овуляция',
+                  style: pw.TextStyle(
+                    font: ttf,
+                    fontSize: 8,
+                    color: PdfColors.grey600,
+                  ),
+                ),
+                pw.SizedBox(width: 20),
+                pw.Text(
+                  'Л — Лютеиновая',
+                  style: pw.TextStyle(
+                    font: ttf,
+                    fontSize: 8,
+                    color: PdfColors.grey600,
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ],
@@ -1680,21 +1888,21 @@ class ExportService {
 
   /// Индекс фазы цикла (0=М, 1=Ф, 2=О, 3=Л) для оси Y scatter.
   int _cyclePhaseIndex(CyclePhase phase) => switch (phase) {
-        CyclePhase.menstruation => 0,
-        CyclePhase.follicular => 1,
-        CyclePhase.ovulation => 2,
-        CyclePhase.luteal => 3,
-      };
+    CyclePhase.menstruation => 0,
+    CyclePhase.follicular => 1,
+    CyclePhase.ovulation => 2,
+    CyclePhase.luteal => 3,
+  };
 
   /// Индекс категории температуры (0=очень холодно … 5=жарко) для оси X.
   int _tempCatIdx(TemperatureCategory cat) => switch (cat) {
-        TemperatureCategory.veryCold => 0,
-        TemperatureCategory.cold => 1,
-        TemperatureCategory.cool => 2,
-        TemperatureCategory.comfortable => 3,
-        TemperatureCategory.warm => 4,
-        TemperatureCategory.hot => 5,
-      };
+    TemperatureCategory.veryCold => 0,
+    TemperatureCategory.cold => 1,
+    TemperatureCategory.cool => 2,
+    TemperatureCategory.comfortable => 3,
+    TemperatureCategory.warm => 4,
+    TemperatureCategory.hot => 5,
+  };
 
   /// Линейный график недели (Пн–Вс): серая линия + цветные точки по типу дня.
   pw.Widget _buildWeekChart(List<DayStats> dayStats, pw.Font ttf) {
@@ -1705,18 +1913,21 @@ class ExportService {
     final byWd = <int, DayStats>{for (final d in dayStats) d.date.weekday: d};
 
     PdfColor dtColor(DayType t) => switch (t) {
-          DayType.stable => _toPdfColor(const Color(0xFF7EC8E3)),
-          DayType.balanced => _toPdfColor(const Color(0xFFB8A9E3)),
-          DayType.contrast => _toPdfColor(const Color(0xFFF4A261)),
-        };
+      DayType.stable => _toPdfColor(const Color(0xFF7EC8E3)),
+      DayType.balanced => _toPdfColor(const Color(0xFFB8A9E3)),
+      DayType.contrast => _toPdfColor(const Color(0xFFF4A261)),
+    };
 
     // Y=0 at bottom in PDF canvas: val=+1 → y=chartH (top), val=-1 → y=0 (bottom)
     double yM(double v) => chartH * (v.clamp(-1.0, 1.0) + 1.0) / 2.0;
     // Equal spacing across 7 slots: wd 1..7 maps to x 0..chartW
     double xW(int wd) => (wd - 1) * chartW / 6.0;
 
-    final labelStyle =
-        pw.TextStyle(font: ttf, fontSize: 7, color: PdfColors.grey500);
+    final labelStyle = pw.TextStyle(
+      font: ttf,
+      fontSize: 7,
+      color: PdfColors.grey500,
+    );
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -1731,9 +1942,11 @@ class ExportService {
               child: pw.Column(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: pw.CrossAxisAlignment.end,
-                children: ['+1', '0', '-1']
-                    .map((t) => pw.Text(t, style: labelStyle))
-                    .toList(),
+                children: [
+                  '+1',
+                  '0',
+                  '-1',
+                ].map((t) => pw.Text(t, style: labelStyle)).toList(),
               ),
             ),
             pw.SizedBox(width: 2),
@@ -1744,7 +1957,8 @@ class ExportService {
                 for (final val in [-1.0, -0.5, 0.0, 0.5, 1.0]) {
                   final y = yM(val);
                   canvas.setColor(
-                      val == 0.0 ? PdfColors.grey400 : PdfColors.grey200);
+                    val == 0.0 ? PdfColors.grey400 : PdfColors.grey200,
+                  );
                   canvas.setLineWidth(val == 0.0 ? 0.7 : 0.4);
                   canvas.moveTo(0, y);
                   canvas.lineTo(chartW, y);
@@ -1812,30 +2026,36 @@ class ExportService {
 
   /// Календарная сетка месяца: кружок на каждый день, цвет по типу дня.
   pw.Widget _buildMonthCalendar(
-      List<DayStats> dayStats, DateTime month, pw.Font ttf) {
+    List<DayStats> dayStats,
+    DateTime month,
+    pw.Font ttf,
+  ) {
     final byDay = <int, DayStats>{for (final ds in dayStats) ds.date.day: ds};
     final firstDay = DateTime(month.year, month.month, 1);
     final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
     final offset = firstDay.weekday - 1; // 0 = Monday
 
     PdfColor dtColor(DayType t) => switch (t) {
-          DayType.stable => _toPdfColor(const Color(0xFF7EC8E3)),
-          DayType.balanced => _toPdfColor(const Color(0xFFB8A9E3)),
-          DayType.contrast => _toPdfColor(const Color(0xFFF4A261)),
-        };
+      DayType.stable => _toPdfColor(const Color(0xFF7EC8E3)),
+      DayType.balanced => _toPdfColor(const Color(0xFFB8A9E3)),
+      DayType.contrast => _toPdfColor(const Color(0xFFF4A261)),
+    };
 
     // Blend color with white at given opacity (simulates semi-transparency on white)
     PdfColor tint(PdfColor c, double opacity) => PdfColor(
-          c.red * opacity + (1 - opacity),
-          c.green * opacity + (1 - opacity),
-          c.blue * opacity + (1 - opacity),
-        );
+      c.red * opacity + (1 - opacity),
+      c.green * opacity + (1 - opacity),
+      c.blue * opacity + (1 - opacity),
+    );
 
     const cellSize = 22.0;
     const cellPad = 5.0;
 
-    final hStyle =
-        pw.TextStyle(font: ttf, fontSize: 8, color: PdfColors.grey600);
+    final hStyle = pw.TextStyle(
+      font: ttf,
+      fontSize: 8,
+      color: PdfColors.grey600,
+    );
     const headers = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
     pw.Widget dayCell(int? dayNum) {
@@ -1860,8 +2080,7 @@ class ExportService {
             child: pw.Center(
               child: pw.Text(
                 '$dayNum',
-                style:
-                    pw.TextStyle(font: ttf, fontSize: 7, color: textColor),
+                style: pw.TextStyle(font: ttf, fontSize: 7, color: textColor),
               ),
             ),
           ),
@@ -1873,13 +2092,17 @@ class ExportService {
     final rows = <pw.Widget>[];
 
     // Header row
-    rows.add(pw.Row(
-      children: headers
-          .map((h) => pw.Expanded(
+    rows.add(
+      pw.Row(
+        children: headers
+            .map(
+              (h) => pw.Expanded(
                 child: pw.Center(child: pw.Text(h, style: hStyle)),
-              ))
-          .toList(),
-    ));
+              ),
+            )
+            .toList(),
+      ),
+    );
     rows.add(pw.SizedBox(height: 6));
 
     // Day rows
@@ -1908,28 +2131,27 @@ class ExportService {
 
   /// Легенда типов дней: три квадрата с подписями.
   pw.Widget _buildDayTypeLegend(pw.Font ttf) => pw.Container(
-        padding:
-            const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        decoration: pw.BoxDecoration(
-          border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+    padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    decoration: pw.BoxDecoration(
+      border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+    ),
+    child: pw.Row(
+      children: [
+        _legendItem(_toPdfColor(const Color(0xFF7EC8E3)), 'Стабильный', ttf),
+        pw.SizedBox(width: 12),
+        _legendItem(
+          _toPdfColor(const Color(0xFFB8A9E3)),
+          'Сбалансированный',
+          ttf,
         ),
-        child: pw.Row(
-          children: [
-            _legendItem(
-                _toPdfColor(const Color(0xFF7EC8E3)), 'Стабильный', ttf),
-            pw.SizedBox(width: 12),
-            _legendItem(
-                _toPdfColor(const Color(0xFFB8A9E3)), 'Сбалансированный', ttf),
-            pw.SizedBox(width: 12),
-            _legendItem(
-                _toPdfColor(const Color(0xFFF4A261)), 'Контрастный', ttf),
-          ],
-        ),
-      );
+        pw.SizedBox(width: 12),
+        _legendItem(_toPdfColor(const Color(0xFFF4A261)), 'Контрастный', ttf),
+      ],
+    ),
+  );
 
   /// Горизонтальные бары квадрантов, сгруппированные по знаку (воспроизводит QuadrantBreakdown).
-  pw.Widget _buildQuadrantBars(
-      Map<MoodCategory, int> counts, pw.Font ttf) {
+  pw.Widget _buildQuadrantBars(Map<MoodCategory, int> counts, pw.Font ttf) {
     final total = counts.values.fold(0, (a, b) => a + b);
     if (total == 0) return pw.SizedBox.shrink();
 
@@ -1955,10 +2177,10 @@ class ExportService {
             pw.Stack(
               children: [
                 pw.Container(
-                    width: barMaxW,
-                    height: barH,
-                    decoration:
-                        const pw.BoxDecoration(color: PdfColors.grey200)),
+                  width: barMaxW,
+                  height: barH,
+                  decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                ),
                 if (pct > 0)
                   pw.Container(
                     width: barMaxW * pct.clamp(0.0, 1.0),
@@ -1971,7 +2193,10 @@ class ExportService {
             pw.Text(
               '${(pct * 100).round()}%',
               style: pw.TextStyle(
-                  font: ttf, fontSize: 9, color: PdfColors.grey600),
+                font: ttf,
+                fontSize: 9,
+                color: PdfColors.grey600,
+              ),
             ),
           ],
         ),
@@ -1979,7 +2204,10 @@ class ExportService {
     }
 
     final groupLabel = pw.TextStyle(
-        font: ttf, fontSize: 11, color: PdfColors.grey700);
+      font: ttf,
+      fontSize: 11,
+      color: PdfColors.grey700,
+    );
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,

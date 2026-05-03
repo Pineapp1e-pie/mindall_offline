@@ -7,10 +7,13 @@ import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:provider/provider.dart';
 import '../../data/local/repositories/local_repository.dart';
 import '../../data/local/repositories/weather_repository.dart';
 import '../../domain/models/mood_entry_draft.dart';
 import '../../domain/fill_weather_draft.dart';
+import '../../domain/services/subscription_service.dart';
+import '../widgets/paywall_widget.dart';
 import '../widgets/step_indicator.dart';
 import '../widgets/bottom_button.dart';
 import 'health_step.dart';
@@ -93,7 +96,6 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
         _selectedCityName = cityName;
         _showManualInput = false;
       });
-
     } on TimeoutException {
       _showError('Нет соединения — введите данные вручную');
       _navigateToManualInput();
@@ -107,8 +109,11 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
 
   Future<String> _getCityNameFromCoordinates(double lat, double lon) async {
     try {
-      final url = 'https://api.openweathermap.org/geo/1.0/reverse?lat=$lat&lon=$lon&limit=1&appid=${_weatherRepository.apiKey}';
-      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
+      final url =
+          'https://api.openweathermap.org/geo/1.0/reverse?lat=$lat&lon=$lon&limit=1&appid=${_weatherRepository.apiKey}';
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         final List data = json.decode(response.body);
@@ -128,10 +133,10 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
   }
 
   Future<void> _detectWeatherForCity(
-      double lat,
-      double lon,
-      String cityName,
-      ) async {
+    double lat,
+    double lon,
+    String cityName,
+  ) async {
     setState(() {
       _loading = true;
       _selectedCityName = cityName;
@@ -164,20 +169,15 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-      ),
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
 
   void _saveAndContinue() {
     Navigator.push(
       context,
-      AppRoute(page: HealthStepScreen(
-          draft: _draft,
-          moodColor: widget.moodColor,
-        ),
+      AppRoute(
+        page: HealthStepScreen(draft: _draft, moodColor: widget.moodColor),
       ),
     );
   }
@@ -185,10 +185,12 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
   void _navigateToManualInput() async {
     final result = await Navigator.push(
       context,
-      AppRoute(page: ManualWeatherScreen(
-        moodColor: widget.moodColor,
-        initialWeather: _draft.weather,
-      )),
+      AppRoute(
+        page: ManualWeatherScreen(
+          moodColor: widget.moodColor,
+          initialWeather: _draft.weather,
+        ),
+      ),
     );
 
     if (result != null) {
@@ -202,6 +204,29 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final hasAccess = context.watch<SubscriptionService>().checkAccess(
+      SubscriptionFeature.weatherData,
+    );
+    if (!hasAccess) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0E1511),
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => Navigator.pop(context, _draft),
+          ),
+        ),
+        body: const SafeArea(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: PaywallWidget()),
+          ),
+        ),
+      );
+    }
+
     final weather = _draft.weather;
 
     return Scaffold(
@@ -242,18 +267,21 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
 
                           // Иконка автоопределения
                           _CompactIconButton(
-                            svgPath: 'lib/ui/assets/pixelariticons_svg/location.svg',  // ← ваш SVG путь
+                            svgPath:
+                                'lib/ui/assets/pixelariticons_svg/location.svg', // ← ваш SVG путь
                             color: const Color(0xFFFFFFFF),
                             loading: _loading,
                             onPressed: _loading ? null : _detectWeather,
-                            tooltip: 'Определить автоматически', iconColor: Colors.black,
+                            tooltip: 'Определить автоматически',
+                            iconColor: Colors.black,
                           ),
 
                           const SizedBox(width: 8),
 
                           // Иконка ручного ввода с SVG
                           _CompactIconButton(
-                            svgPath: 'lib/ui/assets/pixelariticons_svg/edit-box.svg',  // ← ваш SVG путь
+                            svgPath:
+                                'lib/ui/assets/pixelariticons_svg/edit-box.svg', // ← ваш SVG путь
                             color: widget.moodColor,
                             loading: false,
                             onPressed: _navigateToManualInput,
@@ -269,32 +297,33 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
                   if (_selectedCityName != null && !_showManualInput)
                     Padding(
                       padding: const EdgeInsets.all(24),
-                        child: Center(
+                      child: Center(
                         child: Row(
-                        children: [
-                          SvgPicture.asset(
-                            'lib/ui/assets/pixelariticons_svg/map-pin.svg',
-                            width: 20,
-                            height: 20,
-                            colorFilter: ColorFilter.mode(
-                              widget.moodColor,  // ← вот здесь меняем на moodColor
-                              BlendMode.srcIn,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _selectedCityName!,
-                              style: const TextStyle(
-                                fontFamily: 'DotGothic',
-                                color: Colors.white70,
-                                fontSize: 14,
+                          children: [
+                            SvgPicture.asset(
+                              'lib/ui/assets/pixelariticons_svg/map-pin.svg',
+                              width: 20,
+                              height: 20,
+                              colorFilter: ColorFilter.mode(
+                                widget
+                                    .moodColor, // ← вот здесь меняем на moodColor
+                                BlendMode.srcIn,
                               ),
                             ),
-                          ),
-
-                        ],
-                      ),),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _selectedCityName!,
+                                style: const TextStyle(
+                                  fontFamily: 'DotGothic',
+                                  color: Colors.white70,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   // Отображение погоды
                   if (weather != null)
@@ -318,11 +347,11 @@ class _WeatherStepScreenState extends State<WeatherStepScreen> {
           ),
 
           // Кнопка Далее
-            BottomButton(
-              text: 'Далее',
-              color: widget.moodColor,
-              onTap: _saveAndContinue,
-            ),
+          BottomButton(
+            text: 'Далее',
+            color: widget.moodColor,
+            onTap: _saveAndContinue,
+          ),
         ],
       ),
     );
@@ -377,7 +406,10 @@ class _CompactIconButton extends StatelessWidget {
     required this.loading,
     required this.onPressed,
     required this.tooltip,
-  }) : assert(icon != null || svgPath != null, 'Either icon or svgPath must be provided');
+  }) : assert(
+         icon != null || svgPath != null,
+         'Either icon or svgPath must be provided',
+       );
 
   @override
   Widget build(BuildContext context) {
@@ -389,47 +421,47 @@ class _CompactIconButton extends StatelessWidget {
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            color: onPressed == null
-                ? color.withOpacity(0.3)
-                : color,
+            color: onPressed == null ? color.withOpacity(0.3) : color,
             border: Border.all(
               color: onPressed == null
                   ? Colors.grey
-                  : Colors.white,  // ← вернул белый цвет для рамки
+                  : Colors.white, // ← вернул белый цвет для рамки
               width: 2,
             ),
           ),
           child: Center(
             child: loading
                 ? const SizedBox(
-              height: 20,
-              width: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            )
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
                 : svgPath != null
                 ? SvgPicture.asset(
-              svgPath!,
-              width: 20,
-              height: 20,
-              colorFilter: ColorFilter.mode(
-                iconColor,  // ← ИСПРАВЛЕНО: используем iconColor вместо Colors.white
-                BlendMode.srcIn,
-              ),
-            )
+                    svgPath!,
+                    width: 20,
+                    height: 20,
+                    colorFilter: ColorFilter.mode(
+                      iconColor, // ← ИСПРАВЛЕНО: используем iconColor вместо Colors.white
+                      BlendMode.srcIn,
+                    ),
+                  )
                 : Icon(
-              icon,
-              color: iconColor,  // ← ИСПРАВЛЕНО: используем iconColor вместо Colors.white
-              size: 20,
-            ),
+                    icon,
+                    color:
+                        iconColor, // ← ИСПРАВЛЕНО: используем iconColor вместо Colors.white
+                    size: 20,
+                  ),
           ),
         ),
       ),
     );
   }
 }
+
 class _PixelSearchField extends StatefulWidget {
   final Color accentColor;
   final Function(double lat, double lon, String cityName) onCitySelected;
@@ -463,7 +495,9 @@ class __PixelSearchFieldState extends State<_PixelSearchField> {
         'https://api.openweathermap.org/geo/1.0/direct?q=${Uri.encodeComponent(pattern)}&limit=5&appid=$apiKey';
 
     try {
-      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         final List data = json.decode(response.body);
@@ -498,14 +532,14 @@ class __PixelSearchFieldState extends State<_PixelSearchField> {
           ),
           suffixIcon: _controller.text.isNotEmpty
               ? _PixelIconButton(
-            icon: Icons.clear,
-            color: Colors.white54,
-            onPressed: () {
-              setState(() {
-                _controller.clear();
-              });
-            },
-          )
+                  icon: Icons.clear,
+                  color: Colors.white54,
+                  onPressed: () {
+                    setState(() {
+                      _controller.clear();
+                    });
+                  },
+                )
               : null,
           filled: true,
           fillColor: const Color(0xFF18221C),
@@ -541,10 +575,7 @@ class __PixelSearchFieldState extends State<_PixelSearchField> {
             ),
           ),
           child: ListTile(
-            leading: _PixelIcon(
-              Icons.location_on,
-              color: widget.accentColor,
-            ),
+            leading: _PixelIcon(Icons.location_on, color: widget.accentColor),
             title: Text(
               ruName,
               style: const TextStyle(
@@ -605,10 +636,7 @@ class __PixelSearchFieldState extends State<_PixelSearchField> {
   OutlineInputBorder _pixelBorder({Color? color}) {
     return OutlineInputBorder(
       borderRadius: BorderRadius.zero,
-      borderSide: BorderSide(
-        color: color ?? const Color(0xFF555555),
-        width: 2,
-      ),
+      borderSide: BorderSide(color: color ?? const Color(0xFF555555), width: 2),
     );
   }
 }
@@ -618,19 +646,11 @@ class _PixelIcon extends StatelessWidget {
   final Color color;
   final double size;
 
-  const _PixelIcon(
-      this.icon, {
-        required this.color,
-        this.size = 20,
-      });
+  const _PixelIcon(this.icon, {required this.color, this.size = 20});
 
   @override
   Widget build(BuildContext context) {
-    return Icon(
-      icon,
-      color: color,
-      size: size,
-    );
+    return Icon(icon, color: color, size: size);
   }
 }
 
@@ -674,19 +694,10 @@ class _PixelTextButton extends StatelessWidget {
       onTap: onPressed,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: color,
-            width: 1,
-          ),
-        ),
+        decoration: BoxDecoration(border: Border.all(color: color, width: 1)),
         child: Text(
           text,
-          style: TextStyle(
-            fontFamily: 'DotGothic',
-            color: color,
-            fontSize: 12,
-          ),
+          style: TextStyle(fontFamily: 'DotGothic', color: color, fontSize: 12),
         ),
       ),
     );

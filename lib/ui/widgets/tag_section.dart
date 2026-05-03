@@ -55,7 +55,10 @@ class TagSection extends StatelessWidget {
   final List<ContextTag> tags;
   final List<int> selectedIds;
   final void Function(int tagId) onToggle;
-  final VoidCallback? onAdd;  // ← теперь опциональный
+  final VoidCallback? onAdd;
+  final bool editMode;
+  final void Function(int tagId)? onDelete;
+  final Color? moodColor;
 
   const TagSection({
     super.key,
@@ -63,11 +66,15 @@ class TagSection extends StatelessWidget {
     required this.tags,
     required this.selectedIds,
     required this.onToggle,
-    this.onAdd,  // ← может быть null
+    this.onAdd,
+    this.editMode = false,
+    this.onDelete,
+    this.moodColor,
   });
 
   @override
   Widget build(BuildContext context) {
+    final deleteColor = moodColor ?? Colors.white70;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -82,18 +89,50 @@ class TagSection extends StatelessWidget {
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
-          runSpacing: 8,
+          runSpacing: editMode ? 16 : 8,
           children: [
             ...tags.map((tag) {
               final isSelected = selectedIds.contains(tag.id);
+              if (editMode) {
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    _PixelTag(
+                      text: tag.name,
+                      selected: isSelected,
+                      onTap: () => onDelete?.call(tag.id),
+                    ),
+                    Positioned(
+                      top: -8,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Container(
+                          width: 16,
+                          height: 16,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0E1511),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: deleteColor),
+                          ),
+                          child: Icon(
+                            Icons.close,
+                            size: 10,
+                            color: deleteColor,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
               return _PixelTag(
                 text: tag.name,
                 selected: isSelected,
                 onTap: () => onToggle(tag.id),
               );
             }),
-            // ← показываем кнопку только если передан onAdd
-            if (onAdd != null)
+            if (onAdd != null && !editMode)
               _PixelTag(
                 text: '+',
                 selected: false,

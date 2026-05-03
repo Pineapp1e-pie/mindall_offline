@@ -91,7 +91,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 
-class PixelCircle extends StatelessWidget {
+class PixelCircle extends StatefulWidget {
   final double size;
   final double pixelSize;
   final Color color;
@@ -115,23 +115,44 @@ class PixelCircle extends StatelessWidget {
   });
 
   @override
+  State<PixelCircle> createState() => _PixelCircleState();
+}
+
+class _PixelCircleState extends State<PixelCircle> {
+  late final List<_HaloPixel> _haloPixels;
+
+  @override
+  void initState() {
+    super.initState();
+    final rand = Random();
+    _haloPixels = List.generate(
+      8,
+      (_) => _HaloPixel(
+        angle: rand.nextDouble() * 2 * pi,
+        offset: 1 + rand.nextInt(2),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: size,
-      height: size,
+      width: widget.size,
+      height: widget.size,
       child: CustomPaint(
         painter: _PixelCirclePainter(
-          color: color,
-          pixelSize: pixelSize,
-          highlightProgress: highlightProgress,
+          color: widget.color,
+          pixelSize: widget.pixelSize,
+          highlightProgress: widget.highlightProgress,
+          haloPixels: _haloPixels,
         ),
         child: Center(
           child: Text(
-            text,
+            widget.text,
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontFamily: fontText,
-              fontSize: textSize,
+              fontFamily: widget.fontText,
+              fontSize: widget.textSize,
               color: Colors.black,
             ),
           ),
@@ -145,34 +166,14 @@ class _PixelCirclePainter extends CustomPainter {
   final Color color;
   final double pixelSize;
   final double highlightProgress;
-
-  late final List<_HaloPixel> haloPixels;
+  final List<_HaloPixel> haloPixels;
 
   _PixelCirclePainter({
     required this.color,
     required this.pixelSize,
     required this.highlightProgress,
-  }) {
-    haloPixels = _generateHaloPixels();
-  }
-
-  List<_HaloPixel> _generateHaloPixels() {
-    final rand = Random();
-    final pixels = <_HaloPixel>[];
-
-    const int count = 8; // сколько пикселей вокруг
-    for (int i = 0; i < count; i++) {
-      pixels.add(
-        _HaloPixel(
-          angle: rand.nextDouble() * 2 * pi,
-          // distanceMultiplier: 1.8 + rand.nextDouble() * 0.6,
-          offset: 1 + rand.nextInt(2), // 1 или 2 пикселя
-
-        ),
-      );
-    }
-    return pixels;
-  }
+    required this.haloPixels,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -182,42 +183,32 @@ class _PixelCirclePainter extends CustomPainter {
     final cx = size.width / 2;
     final cy = size.height / 2;
 
-    final baseRadius =
-        (size.width / 2 / pixel).floor() * pixel;
+    final baseRadius = (size.width / 2 / pixel).floor() * pixel;
     final baseRadiusSq = baseRadius * baseRadius;
 
-    /// ОСНОВНОЙ КРУГ
+    // Основной круг
     for (double x = 0; x < size.width; x += pixel) {
       for (double y = 0; y < size.height; y += pixel) {
         final dx = (x + pixel / 2) - cx;
         final dy = (y + pixel / 2) - cy;
-
         if (dx * dx + dy * dy <= baseRadiusSq) {
-          canvas.drawRect(
-            Rect.fromLTWH(x, y, pixel, pixel),
-            paint,
-          );
+          canvas.drawRect(Rect.fromLTWH(x, y, pixel, pixel), paint);
         }
       }
     }
 
-    /// 🌟 РАНДОМНЫЕ ПИКСЕЛИ ВОКРУГ
+    // Пиксели вокруг — плавно появляются и разлетаются
     if (highlightProgress > 0) {
       final haloPaint = Paint()
-        ..color = color;
+        ..color = color.withValues(alpha: highlightProgress);
 
       for (final p in haloPixels) {
-        final r = baseRadius + pixelSize * p.offset;
-
+        // Пиксели выдвигаются наружу по мере роста прогресса
+        final r = baseRadius + pixelSize * p.offset * highlightProgress;
         final x = cx + cos(p.angle) * r;
         final y = cy + sin(p.angle) * r;
-
         canvas.drawRect(
-          Rect.fromCenter(
-            center: Offset(x, y),
-            width: pixel,
-            height: pixel,
-          ),
+          Rect.fromCenter(center: Offset(x, y), width: pixel, height: pixel),
           haloPaint,
         );
       }
@@ -225,9 +216,8 @@ class _PixelCirclePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _PixelCirclePainter old) {
-    return old.highlightProgress != highlightProgress;
-  }
+  bool shouldRepaint(covariant _PixelCirclePainter old) =>
+      old.highlightProgress != highlightProgress;
 }
 
 class _HaloPixel {

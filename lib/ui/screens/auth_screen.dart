@@ -10,7 +10,7 @@ import '../../domain/services/notification_service.dart';
 import '../../domain/services/user_profile_service.dart';
 import 'main_nav_scaffold.dart';
 
-const _accentGreen  = Color(0xFF83F483); // Гармония
+const _accentGreen = Color(0xFF83F483); // Гармония
 const _accentYellow = Color(0xFFFFEB89); // Счастье
 const _accentPurple = Color(0xFF9B7BFF); // Грусть
 
@@ -86,15 +86,14 @@ class _AuthScreenState extends State<AuthScreen> {
         }
       } else {
         // Сохраняем имя и пол в метаданных — работает без сессии
-        final response = await supabase.auth.signUp(
-          email: email,
-          password: password,
-          emailRedirectTo: 'mindall://email-confirm',
-          data: {
-            'username': username,
-            'gender': _gender!.name,
-          },
-        ).timeout(timeout);
+        final response = await supabase.auth
+            .signUp(
+              email: email,
+              password: password,
+              emailRedirectTo: 'mindall://email-confirm',
+              data: {'username': username, 'gender': _gender!.name},
+            )
+            .timeout(timeout);
 
         if (response.session != null && response.user != null) {
           // Подтверждение email отключено — сразу входим
@@ -121,11 +120,16 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  Future<void> _saveProfile(String userId, String username, Gender gender) async {
+  Future<void> _saveProfile(
+    String userId,
+    String username,
+    Gender gender,
+  ) async {
     await Supabase.instance.client.from('profiles').upsert({
       'user_id': userId,
       'username': username,
       'gender': gender.name,
+      'subscription_type': SubscriptionType.free.name,
     });
     await UserProfileService().saveGender(gender);
   }
@@ -136,7 +140,10 @@ class _AuthScreenState extends State<AuthScreen> {
       setState(() => _error = 'Введи email выше');
       return;
     }
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       await Supabase.instance.client.auth
           .resetPasswordForEmail(email, redirectTo: 'mindall://reset-password')
@@ -163,13 +170,21 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   String _mapError(String message) {
-    if (message.contains('Invalid login credentials')) return 'Неверный email или пароль';
-    if (message.contains('Email not confirmed')) return 'Подтверди email — письмо отправлено';
-    if (message.contains('User already registered')) return 'Этот email уже зарегистрирован';
-    if (message.contains('Password should be')) return 'Пароль минимум 6 символов';
-    if (message.contains('security purposes') || message.contains('after')) return 'Подожди немного перед повторной отправкой';
-    if (message.contains('rate') || message.contains('limit')) return 'Слишком много попыток — подожди';
-    return message.isNotEmpty ? message : 'Проверьте подключение к интернету или VPN';
+    if (message.contains('Invalid login credentials'))
+      return 'Неверный email или пароль';
+    if (message.contains('Email not confirmed'))
+      return 'Подтверди email — письмо отправлено';
+    if (message.contains('User already registered'))
+      return 'Этот email уже зарегистрирован';
+    if (message.contains('Password should be'))
+      return 'Пароль минимум 6 символов';
+    if (message.contains('security purposes') || message.contains('after'))
+      return 'Подожди немного перед повторной отправкой';
+    if (message.contains('rate') || message.contains('limit'))
+      return 'Слишком много попыток — подожди';
+    return message.isNotEmpty
+        ? message
+        : 'Проверьте подключение к интернету или VPN';
   }
 
   Widget _emailSentScreen() {
@@ -260,11 +275,17 @@ class _AuthScreenState extends State<AuthScreen> {
                   children: _isLogin
                       ? [
                           const TextSpan(text: 'Привет,\n'),
-                          TextSpan(text: 'снова ты', style: TextStyle(color: _accentGreen)),
+                          TextSpan(
+                            text: 'снова ты',
+                            style: TextStyle(color: _accentGreen),
+                          ),
                         ]
                       : [
                           const TextSpan(text: 'Создать\n'),
-                          TextSpan(text: 'аккаунт', style: TextStyle(color: _accentYellow)),
+                          TextSpan(
+                            text: 'аккаунт',
+                            style: TextStyle(color: _accentYellow),
+                          ),
                         ],
                 ),
                 textAlign: TextAlign.center,
@@ -274,10 +295,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
               // Имя + Пол — только при регистрации
               if (!_isLogin) ...[
-                _PixelField(
-                  controller: _usernameController,
-                  hint: 'имя',
-                ),
+                _PixelField(controller: _usernameController, hint: 'имя'),
                 const SizedBox(height: 24),
                 const Text(
                   'ПОЛ',
@@ -309,7 +327,8 @@ class _AuthScreenState extends State<AuthScreen> {
                       label: '—',
                       selected: _gender == Gender.preferNotToSay,
                       accent: Colors.white,
-                      onTap: () => setState(() => _gender = Gender.preferNotToSay),
+                      onTap: () =>
+                          setState(() => _gender = Gender.preferNotToSay),
                     ),
                   ],
                 ),
@@ -412,26 +431,30 @@ class _AuthScreenState extends State<AuthScreen> {
                 }),
                 child: Text.rich(
                   _isLogin
-                      ? TextSpan(children: [
-                          const TextSpan(
-                            text: 'нет аккаунта? ',
-                            style: TextStyle(color: Colors.white38),
-                          ),
-                          TextSpan(
-                            text: 'создать',
-                            style: TextStyle(color: _accentYellow),
-                          ),
-                        ])
-                      : TextSpan(children: [
-                          const TextSpan(
-                            text: 'уже есть аккаунт? ',
-                            style: TextStyle(color: Colors.white38),
-                          ),
-                          TextSpan(
-                            text: 'войти',
-                            style: TextStyle(color: _accentGreen),
-                          ),
-                        ]),
+                      ? TextSpan(
+                          children: [
+                            const TextSpan(
+                              text: 'нет аккаунта? ',
+                              style: TextStyle(color: Colors.white38),
+                            ),
+                            TextSpan(
+                              text: 'создать',
+                              style: TextStyle(color: _accentYellow),
+                            ),
+                          ],
+                        )
+                      : TextSpan(
+                          children: [
+                            const TextSpan(
+                              text: 'уже есть аккаунт? ',
+                              style: TextStyle(color: Colors.white38),
+                            ),
+                            TextSpan(
+                              text: 'войти',
+                              style: TextStyle(color: _accentGreen),
+                            ),
+                          ],
+                        ),
                   style: const TextStyle(fontFamily: 'DotGothic', fontSize: 13),
                 ),
               ),
@@ -510,9 +533,7 @@ class _GenderButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          border: Border.all(
-            color: selected ? accent : Colors.white24,
-          ),
+          border: Border.all(color: selected ? accent : Colors.white24),
           color: selected ? accent.withOpacity(0.12) : Colors.transparent,
         ),
         child: Text(

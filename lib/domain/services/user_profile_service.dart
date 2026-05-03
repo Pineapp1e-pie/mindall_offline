@@ -11,16 +11,20 @@ class UserProfileService extends ChangeNotifier {
   static const _notifEnabledKey = 'notif_enabled';
   static const _notifHourKey = 'notif_hour';
   static const _notifMinuteKey = 'notif_minute';
+  static const _subscriptionTypeKey = 'subscription_type';
 
   Gender? _gender;
   CycleSettings? _cycleSettings;
   String? _username;
+  SubscriptionType _subscriptionType = SubscriptionType.free;
 
   Gender? get gender => _gender;
   CycleSettings? get cycleSettings => _cycleSettings;
   String? get username => _username;
+  SubscriptionType get subscriptionType => _subscriptionType;
   bool get isFemale => _gender == Gender.female;
   bool get trackCycle => _cycleSettings != null;
+  bool get isPremium => _subscriptionType == SubscriptionType.premium;
 
   /// Загружает данные из SharedPreferences в память. Вызывать один раз при запуске.
   Future<void> init() async {
@@ -29,13 +33,20 @@ class UserProfileService extends ChangeNotifier {
       _gender = profile.gender;
       _cycleSettings = profile.cycleSettings;
       _username = profile.username;
+      _subscriptionType = profile.subscriptionType;
     }
   }
 
   Future<UserProfile?> load() async {
     final prefs = await SharedPreferences.getInstance();
     final genderStr = prefs.getString(_genderKey);
-    if (genderStr == null) return null;
+    final subscriptionType = _parseSubscriptionType(
+      prefs.getString(_subscriptionTypeKey),
+    );
+    if (genderStr == null) {
+      _subscriptionType = subscriptionType;
+      return null;
+    }
 
     final gender = Gender.values.firstWhere(
       (g) => g.name == genderStr,
@@ -57,6 +68,14 @@ class UserProfileService extends ChangeNotifier {
       gender: gender,
       username: prefs.getString(_usernameKey),
       cycleSettings: cycleSettings,
+      subscriptionType: subscriptionType,
+    );
+  }
+
+  SubscriptionType _parseSubscriptionType(String? value) {
+    return SubscriptionType.values.firstWhere(
+      (type) => type.name == value,
+      orElse: () => SubscriptionType.free,
     );
   }
 
@@ -78,9 +97,19 @@ class UserProfileService extends ChangeNotifier {
     _cycleSettings = settings;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_lastPeriodKey, settings.lastPeriodStart.toIso8601String());
+    await prefs.setString(
+      _lastPeriodKey,
+      settings.lastPeriodStart.toIso8601String(),
+    );
     await prefs.setInt(_cycleLengthKey, settings.cycleLengthDays);
     await prefs.setInt(_periodDurationKey, settings.periodDurationDays);
+  }
+
+  Future<void> saveSubscriptionType(SubscriptionType type) async {
+    _subscriptionType = type;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_subscriptionTypeKey, type.name);
   }
 
   Future<void> clearCycleSettings() async {
@@ -107,7 +136,11 @@ class UserProfileService extends ChangeNotifier {
     return prefs.getInt(_notifMinuteKey) ?? 0;
   }
 
-  Future<void> saveNotificationSettings(bool enabled, int hour, int minute) async {
+  Future<void> saveNotificationSettings(
+    bool enabled,
+    int hour,
+    int minute,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_notifEnabledKey, enabled);
     await prefs.setInt(_notifHourKey, hour);
@@ -118,6 +151,7 @@ class UserProfileService extends ChangeNotifier {
     _gender = null;
     _cycleSettings = null;
     _username = null;
+    _subscriptionType = SubscriptionType.free;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_genderKey);
@@ -128,5 +162,6 @@ class UserProfileService extends ChangeNotifier {
     await prefs.remove(_notifEnabledKey);
     await prefs.remove(_notifHourKey);
     await prefs.remove(_notifMinuteKey);
+    await prefs.remove(_subscriptionTypeKey);
   }
 }

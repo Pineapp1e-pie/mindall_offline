@@ -12,6 +12,7 @@ import '../../domain/models/chart_models.dart';
 import '../../domain/models/mood_entry_with_mood.dart';
 import '../../domain/services/analytics_service.dart';
 import '../../domain/services/export_service.dart';
+import '../../domain/services/subscription_service.dart';
 import '../../domain/services/user_profile_service.dart';
 import '../assets/mood_colors.dart';
 import '../models/mood_entry_ui_model.dart';
@@ -20,6 +21,7 @@ import '../widgets/analytics/week_chart.dart';
 import '../widgets/analytics/month_calendar.dart';
 import '../widgets/analytics/year_bars_chart.dart';
 import '../widgets/analytics/quadrant_breakdown.dart';
+import '../widgets/paywall_widget.dart';
 import 'correlation_screen.dart';
 import 'mood_category_screen.dart';
 import 'mood_entry_detail_screen.dart';
@@ -47,7 +49,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     super.didChangeDependencies();
     if (!_initialized) {
       _service = AnalyticsService(context.read<LocalRepository>());
-      _exportService = ExportService(context.read<LocalRepository>());
+      _exportService = ExportService(
+        context.read<LocalRepository>(),
+        context.read<SubscriptionService>(),
+      );
       _initialized = true;
     }
   }
@@ -56,24 +61,25 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     final d = _selectedDay;
     return switch (_period) {
       _Period.day => DateTimeRange(
-          start: DateTime(d.year, d.month, d.day),
-          end: DateTime(d.year, d.month, d.day, 23, 59, 59),
-        ),
+        start: DateTime(d.year, d.month, d.day),
+        end: DateTime(d.year, d.month, d.day, 23, 59, 59),
+      ),
       _Period.week => () {
-          final monday = d.subtract(Duration(days: d.weekday - 1));
-          final start = DateTime(monday.year, monday.month, monday.day);
-          final end = start
-              .add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
-          return DateTimeRange(start: start, end: end);
-        }(),
+        final monday = d.subtract(Duration(days: d.weekday - 1));
+        final start = DateTime(monday.year, monday.month, monday.day);
+        final end = start.add(
+          const Duration(days: 6, hours: 23, minutes: 59, seconds: 59),
+        );
+        return DateTimeRange(start: start, end: end);
+      }(),
       _Period.month => DateTimeRange(
-          start: DateTime(d.year, d.month, 1),
-          end: DateTime(d.year, d.month + 1, 0, 23, 59, 59),
-        ),
+        start: DateTime(d.year, d.month, 1),
+        end: DateTime(d.year, d.month + 1, 0, 23, 59, 59),
+      ),
       _Period.year => DateTimeRange(
-          start: DateTime(d.year, 1, 1),
-          end: DateTime(d.year, 12, 31, 23, 59, 59),
-        ),
+        start: DateTime(d.year, 1, 1),
+        end: DateTime(d.year, 12, 31, 23, 59, 59),
+      ),
     };
   }
 
@@ -102,8 +108,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       _Period.week => _range.end.isBefore(now),
       _Period.month =>
         _selectedDay.year < now.year ||
-            (_selectedDay.year == now.year &&
-                _selectedDay.month < now.month),
+            (_selectedDay.year == now.year && _selectedDay.month < now.month),
       _Period.year => _selectedDay.year < now.year,
     };
   }
@@ -114,8 +119,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       _selectedDay = switch (_period) {
         _Period.day => _selectedDay.subtract(const Duration(days: 1)),
         _Period.week => _selectedDay.subtract(const Duration(days: 7)),
-        _Period.month =>
-          DateTime(_selectedDay.year, _selectedDay.month - 1, 1),
+        _Period.month => DateTime(_selectedDay.year, _selectedDay.month - 1, 1),
         _Period.year => DateTime(_selectedDay.year - 1, 1, 1),
       };
     });
@@ -128,17 +132,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       _selectedDay = switch (_period) {
         _Period.day => _selectedDay.add(const Duration(days: 1)),
         _Period.week => _selectedDay.add(const Duration(days: 7)),
-        _Period.month =>
-          DateTime(_selectedDay.year, _selectedDay.month + 1, 1),
+        _Period.month => DateTime(_selectedDay.year, _selectedDay.month + 1, 1),
         _Period.year => DateTime(_selectedDay.year + 1, 1, 1),
       };
     });
   }
 
   void _setPeriod(_Period p) => setState(() {
-        _period = p;
-        _chartSelectedDay = null;
-      });
+    _period = p;
+    _chartSelectedDay = null;
+  });
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
@@ -159,106 +162,137 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   void _showChartHelp(BuildContext context) {
     final (title, body) = switch (_period) {
-      _Period.day => (
-          'График за день',
-          _buildDayHelp(),
-        ),
-      _Period.week => (
-          'График за неделю',
-          _buildWeekMonthHelp(isMonth: false),
-        ),
-      _Period.month => (
-          'График за месяц',
-          _buildWeekMonthHelp(isMonth: true),
-        ),
-      _Period.year => (
-          'График за год',
-          _buildYearHelp(),
-        ),
+      _Period.day => ('График за день', _buildDayHelp()),
+      _Period.week => ('График за неделю', _buildWeekMonthHelp(isMonth: false)),
+      _Period.month => ('График за месяц', _buildWeekMonthHelp(isMonth: true)),
+      _Period.year => ('График за год', _buildYearHelp()),
     };
     _showInfoSheet(context, title: title, body: body);
   }
 
   Widget _buildDayHelp() => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _infoText('По горизонтали — время суток, по вертикали — настроение от −1 (плохое) до +1 (хорошее). Каждая точка — одна запись.'),
-          const SizedBox(height: 16),
-          _infoText('Цвет точки:'),
-          const SizedBox(height: 10),
-          _dotRow(const Color(0xFF46FF46), 'спокойное позитивное — покой, гармония, комфорт и тд'),
-          _dotRow(const Color(0xFFFFDD3B), 'активное позитивное — радость, восторг, энтузиазм и тд'),
-          _dotRow(const Color(0xFF835AFF), 'спокойное негативное — грусть, апатия, одиночество и тд'),
-          _dotRow(const Color(0xFFFF5959), 'активное негативное — злость, тревога, раздражение и тд'),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _infoText(
+        'По горизонтали — время суток, по вертикали — настроение от −1 (плохое) до +1 (хорошее). Каждая точка — одна запись.',
+      ),
+      const SizedBox(height: 16),
+      _infoText('Цвет точки:'),
+      const SizedBox(height: 10),
+      _dotRow(
+        const Color(0xFF46FF46),
+        'спокойное позитивное — покой, гармония, комфорт и тд',
+      ),
+      _dotRow(
+        const Color(0xFFFFDD3B),
+        'активное позитивное — радость, восторг, энтузиазм и тд',
+      ),
+      _dotRow(
+        const Color(0xFF835AFF),
+        'спокойное негативное — грусть, апатия, одиночество и тд',
+      ),
+      _dotRow(
+        const Color(0xFFFF5959),
+        'активное негативное — злость, тревога, раздражение и тд',
+      ),
+    ],
+  );
 
   Widget _buildWeekMonthHelp({required bool isMonth}) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _infoText(isMonth
-              ? 'Каждая клетка — один день. Нажми на день, чтобы посмотреть записи.'
-              : 'Каждая точка — среднее настроение за день от −1 (плохой день) до +1 (хороший день). Нажми на точку, чтобы посмотреть записи дня.'),
-          const SizedBox(height: 16),
-          _infoText('Цвет показывает насколько разным было настроение в течение дня:'),
-          const SizedBox(height: 10),
-          _dotRow(const Color(0xFF7EC8E3), 'стабильный — эмоции примерно одинаковые'),
-          _dotRow(const Color(0xFFB8A9E3), 'сбалансированный — разные, но в одном направлении'),
-          _dotRow(const Color(0xFFF4A261), 'контрастный — настроение сильно менялось в течение дня'),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _infoText(
+        isMonth
+            ? 'Каждая клетка — один день. Нажми на день, чтобы посмотреть записи.'
+            : 'Каждая точка — среднее настроение за день от −1 (плохой день) до +1 (хороший день). Нажми на точку, чтобы посмотреть записи дня.',
+      ),
+      const SizedBox(height: 16),
+      _infoText(
+        'Цвет показывает насколько разным было настроение в течение дня:',
+      ),
+      const SizedBox(height: 10),
+      _dotRow(
+        const Color(0xFF7EC8E3),
+        'стабильный — эмоции примерно одинаковые',
+      ),
+      _dotRow(
+        const Color(0xFFB8A9E3),
+        'сбалансированный — разные, но в одном направлении',
+      ),
+      _dotRow(
+        const Color(0xFFF4A261),
+        'контрастный — настроение сильно менялось в течение дня',
+      ),
+    ],
+  );
 
   Widget _buildYearHelp() => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _infoText('Каждый столбец — один месяц. Высота — общее количество записей. Цвета показывают из каких эмоций состоял месяц:'),
-          const SizedBox(height: 10),
-          _dotRow(const Color(0xFF46FF46), 'спокойное позитивное — покой, гармония, комфорт и тд'),
-          _dotRow(const Color(0xFFFFDD3B), 'активное позитивное — радость, восторг, энтузиазм и тд'),
-          _dotRow(const Color(0xFF835AFF), 'спокойное негативное — грусть, апатия, одиночество и тд'),
-          _dotRow(const Color(0xFFFF5959), 'активное негативное — злость, тревога, раздражение и тд'),
-        ],
-      );
-
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _infoText(
+        'Каждый столбец — один месяц. Высота — общее количество записей. Цвета показывают из каких эмоций состоял месяц:',
+      ),
+      const SizedBox(height: 10),
+      _dotRow(
+        const Color(0xFF46FF46),
+        'спокойное позитивное — покой, гармония, комфорт и тд',
+      ),
+      _dotRow(
+        const Color(0xFFFFDD3B),
+        'активное позитивное — радость, восторг, энтузиазм и тд',
+      ),
+      _dotRow(
+        const Color(0xFF835AFF),
+        'спокойное негативное — грусть, апатия, одиночество и тд',
+      ),
+      _dotRow(
+        const Color(0xFFFF5959),
+        'активное негативное — злость, тревога, раздражение и тд',
+      ),
+    ],
+  );
 
   static Widget _infoText(String text) => Text(
-        text,
-        style: const TextStyle(
-          fontFamily: 'DotGothic',
-          fontSize: 13,
-          color: Colors.white70,
-          height: 1.6,
-        ),
-      );
+    text,
+    style: const TextStyle(
+      fontFamily: 'DotGothic',
+      fontSize: 13,
+      color: Colors.white70,
+      height: 1.6,
+    ),
+  );
 
   static Widget _dotRow(Color color, String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 10,
-              height: 10,
-              margin: const EdgeInsets.only(top: 3, right: 10),
-              color: color,
-            ),
-            Expanded(
-              child: Text(
-                text,
-                style: const TextStyle(
-                  fontFamily: 'DotGothic',
-                  fontSize: 13,
-                  color: Colors.white70,
-                  height: 1.5,
-                ),
-              ),
-            ),
-          ],
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          margin: const EdgeInsets.only(top: 3, right: 10),
+          color: color,
         ),
-      );
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontFamily: 'DotGothic',
+              fontSize: 13,
+              color: Colors.white70,
+              height: 1.5,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 
-  void _showInfoSheet(BuildContext context,
-      {required String title, required Widget body}) {
+  void _showInfoSheet(
+    BuildContext context, {
+    required String title,
+    required Widget body,
+  }) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -300,6 +334,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   @override
   Widget build(BuildContext context) {
     final trackCycle = context.watch<UserProfileService>().trackCycle;
+    final subscription = context.watch<SubscriptionService>();
     return Scaffold(
       backgroundColor: const Color(0xFF0E1511),
       body: SafeArea(
@@ -339,8 +374,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       children: [
                         GestureDetector(
                           onTap: _goPrev,
-                          child: const Icon(Icons.chevron_left,
-                              color: Colors.white54, size: 20),
+                          child: const Icon(
+                            Icons.chevron_left,
+                            color: Colors.white54,
+                            size: 20,
+                          ),
                         ),
                         const SizedBox(width: 6),
                         GestureDetector(
@@ -358,17 +396,20 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         ),
                         if (_period == _Period.day) ...[
                           const SizedBox(width: 2),
-                          const Icon(Icons.expand_more,
-                              color: Colors.white38, size: 14),
+                          const Icon(
+                            Icons.expand_more,
+                            color: Colors.white38,
+                            size: 14,
+                          ),
                         ],
                         const SizedBox(width: 6),
                         GestureDetector(
                           onTap: _canGoNext ? _goNext : null,
-                          child: Icon(Icons.chevron_right,
-                              color: _canGoNext
-                                  ? Colors.white54
-                                  : Colors.white12,
-                              size: 20),
+                          child: Icon(
+                            Icons.chevron_right,
+                            color: _canGoNext ? Colors.white54 : Colors.white12,
+                            size: 20,
+                          ),
                         ),
                         const Spacer(),
                         if (_exporting)
@@ -382,7 +423,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                           )
                         else
                           GestureDetector(
-                            onTap: _showExportSheet,
+                            onTap:
+                                subscription.checkAccess(
+                                  SubscriptionFeature.exportData,
+                                )
+                                ? _showExportSheet
+                                : _showPaywall,
                             child: const Icon(
                               Icons.ios_share,
                               color: Colors.white38,
@@ -398,7 +444,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(
-                                  color: Colors.white30, width: 1),
+                                color: Colors.white30,
+                                width: 1,
+                              ),
                             ),
                             child: const Center(
                               child: Text(
@@ -434,7 +482,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     ),
                   ),
 
-
                   // ── Записи ──
                   if (_period == _Period.day) ...[
                     const SizedBox(height: 24),
@@ -456,9 +503,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     ),
                   ],
 
-
-
-
                   // ── Распределение квадрантов (только год) ──
                   if (_period == _Period.year) ...[
                     const SizedBox(height: 20),
@@ -466,7 +510,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     const SizedBox(height: 20),
                     QuadrantBreakdown(
                       future: _service.getQuadrantStats(
-                          _range.start, _range.end),
+                        _range.start,
+                        _range.end,
+                      ),
                     ),
                   ],
 
@@ -592,6 +638,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
+  void _showPaywall() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) =>
+          const Padding(padding: EdgeInsets.all(16), child: PaywallWidget()),
+    );
+  }
+
   Future<void> _exportExcel() async {
     if (_exporting) return;
     setState(() => _exporting = true);
@@ -600,10 +656,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         _range.start,
         _range.end,
       );
-      await Share.shareXFiles(
-        [XFile(path, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')],
-        subject: 'Записи настроения',
-      );
+      await Share.shareXFiles([
+        XFile(
+          path,
+          mimeType:
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ),
+      ], subject: 'Записи настроения');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -684,11 +743,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
 
   void _openCorrelation(CorrelationType type) {
-    Navigator.push(
-      context,
-      AppRoute(page: CorrelationScreen(type: type),
-      ),
+    final hasAccess = context.read<SubscriptionService>().checkAccess(
+      SubscriptionFeature.correlations,
     );
+
+    if (!hasAccess) {
+      _showPaywall();
+      return;
+    }
+
+    Navigator.push(context, AppRoute(page: CorrelationScreen(type: type)));
   }
 }
 
@@ -709,24 +773,28 @@ class _PeriodSelector extends StatelessWidget {
       child: Row(
         children: [
           _PeriodBtn(
-              label: 'День',
-              active: selected == _Period.day,
-              onTap: () => onChanged(_Period.day)),
+            label: 'День',
+            active: selected == _Period.day,
+            onTap: () => onChanged(_Period.day),
+          ),
           const SizedBox(width: 8),
           _PeriodBtn(
-              label: 'Неделя',
-              active: selected == _Period.week,
-              onTap: () => onChanged(_Period.week)),
+            label: 'Неделя',
+            active: selected == _Period.week,
+            onTap: () => onChanged(_Period.week),
+          ),
           const SizedBox(width: 8),
           _PeriodBtn(
-              label: 'Месяц',
-              active: selected == _Period.month,
-              onTap: () => onChanged(_Period.month)),
+            label: 'Месяц',
+            active: selected == _Period.month,
+            onTap: () => onChanged(_Period.month),
+          ),
           const SizedBox(width: 8),
           _PeriodBtn(
-              label: 'Год',
-              active: selected == _Period.year,
-              onTap: () => onChanged(_Period.year)),
+            label: 'Год',
+            active: selected == _Period.year,
+            onTap: () => onChanged(_Period.year),
+          ),
         ],
       ),
     );
@@ -738,8 +806,11 @@ class _PeriodBtn extends StatelessWidget {
   final bool active;
   final VoidCallback onTap;
 
-  const _PeriodBtn(
-      {required this.label, required this.active, required this.onTap});
+  const _PeriodBtn({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -750,7 +821,9 @@ class _PeriodBtn extends StatelessWidget {
         decoration: BoxDecoration(
           color: active ? Colors.white : Colors.transparent,
           border: Border.all(
-              color: active ? Colors.white : Colors.white30, width: 1.5),
+            color: active ? Colors.white : Colors.white30,
+            width: 1.5,
+          ),
         ),
         child: Text(
           label,
@@ -790,44 +863,44 @@ class _ChartSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return switch (period) {
       _Period.day => StreamBuilder<List<MoodEntryWithMood>>(
-          stream: repository.watchMoodEntriesForDay(
-            DateTime(selectedDay.year, selectedDay.month, selectedDay.day),
-          ),
-          builder: (context, snapshot) {
-            final entries = snapshot.data ?? [];
-            if (entries.isEmpty) return const EmptyChart(text: 'Нет записей');
-            return DayHourChart(entries: entries);
-          },
+        stream: repository.watchMoodEntriesForDay(
+          DateTime(selectedDay.year, selectedDay.month, selectedDay.day),
         ),
+        builder: (context, snapshot) {
+          final entries = snapshot.data ?? [];
+          if (entries.isEmpty) return const EmptyChart(text: 'Нет записей');
+          return DayHourChart(entries: entries);
+        },
+      ),
       _Period.week => FutureBuilder<List<DayStats>>(
-          future: service.getDayStatsList(range.start, range.end),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) return const ChartPlaceholder();
-            return WeekChart(
-              dayStats: snapshot.data!,
-              weekStart: range.start,
-              onDayTap: onDaySelected,
-            );
-          },
-        ),
+        future: service.getDayStatsList(range.start, range.end),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const ChartPlaceholder();
+          return WeekChart(
+            dayStats: snapshot.data!,
+            weekStart: range.start,
+            onDayTap: onDaySelected,
+          );
+        },
+      ),
       _Period.month => FutureBuilder<List<DayStats>>(
-          future: service.getDayStatsList(range.start, range.end),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) return const ChartPlaceholder();
-            return MonthCalendar(
-              dayStats: snapshot.data!,
-              month: range.start,
-              onDayTap: onDaySelected,
-            );
-          },
-        ),
+        future: service.getDayStatsList(range.start, range.end),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const ChartPlaceholder();
+          return MonthCalendar(
+            dayStats: snapshot.data!,
+            month: range.start,
+            onDayTap: onDaySelected,
+          );
+        },
+      ),
       _Period.year => FutureBuilder<List<MonthQuadrantData>>(
-          future: service.getYearQuadrantStats(selectedDay.year),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) return const ChartPlaceholder();
-            return YearBarsChart(data: snapshot.data!);
-          },
-        ),
+        future: service.getYearQuadrantStats(selectedDay.year),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const ChartPlaceholder();
+          return YearBarsChart(data: snapshot.data!);
+        },
+      ),
     };
   }
 }
@@ -887,7 +960,8 @@ class _EntriesSection extends StatelessWidget {
                   color: color,
                   onTap: () => Navigator.push(
                     context,
-                    AppRoute(page: MoodEntryDetailScreen(
+                    AppRoute(
+                      page: MoodEntryDetailScreen(
                         entry: uiModel,
                         repository: repository,
                       ),
@@ -1095,10 +1169,7 @@ class _BottomNav extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          _NavIcon(
-            icon: Icons.arrow_back,
-            onTap: () => Navigator.pop(context),
-          ),
+          _NavIcon(icon: Icons.arrow_back, onTap: () => Navigator.pop(context)),
           _NavIcon(
             icon: Icons.add,
             isActive: true,
@@ -1107,11 +1178,7 @@ class _BottomNav extends StatelessWidget {
               AppRoute(page: const MoodCategoryScreen()),
             ),
           ),
-          _NavIcon(
-            icon: Icons.bar_chart,
-            isActive: true,
-            onTap: () {},
-          ),
+          _NavIcon(icon: Icons.bar_chart, isActive: true, onTap: () {}),
         ],
       ),
     );
@@ -1123,8 +1190,11 @@ class _NavIcon extends StatelessWidget {
   final VoidCallback onTap;
   final bool isActive;
 
-  const _NavIcon(
-      {required this.icon, required this.onTap, this.isActive = false});
+  const _NavIcon({
+    required this.icon,
+    required this.onTap,
+    this.isActive = false,
+  });
 
   @override
   Widget build(BuildContext context) {

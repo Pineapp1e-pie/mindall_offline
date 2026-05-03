@@ -9,6 +9,7 @@ class AchievementService {
 
   Future<int> calculateStreak(String userId) async {
     final dates = await _repository.getUniqueMoodEntryDates(userId);
+    print('[Streak] userId=$userId dates=$dates');
     if (dates.isEmpty) return 0;
 
     final today = DateTime.now();
@@ -16,7 +17,11 @@ class AchievementService {
     final yesterdayDate = todayDate.subtract(const Duration(days: 1));
 
     final mostRecent = dates.first;
-    if (mostRecent != todayDate && mostRecent != yesterdayDate) return 0;
+    print('[Streak] todayDate=$todayDate mostRecent=$mostRecent');
+    if (mostRecent != todayDate && mostRecent != yesterdayDate) {
+      print('[Streak] mostRecent is not today or yesterday → streak=0');
+      return 0;
+    }
 
     int streak = 0;
     DateTime expected = mostRecent;
@@ -25,9 +30,11 @@ class AchievementService {
         streak++;
         expected = expected.subtract(const Duration(days: 1));
       } else {
+        print('[Streak] gap found at $date (expected $expected) → break');
         break;
       }
     }
+    print('[Streak] final streak=$streak');
     return streak;
   }
 
@@ -36,12 +43,13 @@ class AchievementService {
     return count >= MoodCategory.values.length;
   }
 
-  /// First-launch migration: inserts achievement rows if missing, then checks.
+  /// Inserts achievement rows if missing, then always checks for unlocks.
   /// Returns newly unlocked achievements so the UI can show popups.
   Future<List<Achievement>> initIfNeeded(String userId) async {
     final count = await _repository.countUserAchievements(userId);
-    if (count > 0) return [];
-    await _repository.initAchievementsForUser(userId);
+    if (count == 0) {
+      await _repository.initAchievementsForUser(userId);
+    }
     return checkAfterEntrySaved(userId);
   }
 
@@ -49,6 +57,7 @@ class AchievementService {
   /// Returns the list of newly unlocked achievements.
   Future<List<Achievement>> checkAfterEntrySaved(String userId) async {
     final unachieved = await _repository.getUnachievedAchievements(userId);
+    print('[Achievements] unachieved count=${unachieved.length} ids=${unachieved.map((a) => a.achievementId).toList()}');
     if (unachieved.isEmpty) return [];
 
     final totalEntries = await _repository.countMoodEntries(userId);

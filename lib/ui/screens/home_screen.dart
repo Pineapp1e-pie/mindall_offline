@@ -19,6 +19,7 @@ class HomeScreen extends StatelessWidget {
   final DateTime selectedDate;
   final bool isToday;
   final ValueChanged<DateTime> onDateChanged;
+  final Future<void> Function()? onRefresh;
 
   const HomeScreen({
     super.key,
@@ -26,6 +27,7 @@ class HomeScreen extends StatelessWidget {
     required this.selectedDate,
     required this.isToday,
     required this.onDateChanged,
+    this.onRefresh,
   });
 
   // Детерминированный цвет по дате — не меняется при перерисовке
@@ -85,9 +87,6 @@ class HomeScreen extends StatelessWidget {
               )
             else
               Text.rich(
-
-
-
                 TextSpan(
                   children: [
                     const TextSpan(text: 'Записи за\n'),
@@ -114,8 +113,7 @@ class HomeScreen extends StatelessWidget {
                 onTap: () {
                   Navigator.push(
                     context,
-                    AppRoute(page: const MoodCategoryScreen(),
-                    ),
+                    AppRoute(page: const MoodCategoryScreen()),
                   );
                 },
               ),
@@ -165,35 +163,42 @@ class HomeScreen extends StatelessWidget {
 
             const SizedBox(height: 24),
 
-
             // ---------- КОНТЕНТ ----------
-
-
             Expanded(
-              child: entries.isEmpty
-                  ? Center(
-                      child: Text(
-                        isToday ? 'Нет записей' : 'В этот день\nзаписей нет',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontFamily: 'DotGothic',
-                          color: Colors.white24,
-                          fontSize: 16,
-                          height: 1.6,
+              child: RefreshIndicator(
+                onRefresh: onRefresh ?? () async {},
+                color: Colors.white,
+                backgroundColor: const Color(0xFF1A2A1A),
+                child: entries.isEmpty
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.2,
+                          ),
+                          Text(
+                            isToday
+                                ? 'Нет записей'
+                                : 'В этот день\nзаписей нет',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontFamily: 'DotGothic',
+                              color: Colors.white24,
+                              fontSize: 16,
+                              height: 1.6,
+                            ),
+                          ),
+                        ],
+                      )
+                    : ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        itemCount: entries.length,
+                        itemBuilder: (context, index) => _MoodItem(
+                          entry: entries[index],
+                          index: index,
                         ),
                       ),
-                    )
-                  : ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                itemCount: entries.length,
-                itemBuilder: (context, index) {
-                  return _MoodItem(
-                    entry: entries[index],
-                    index: index,
-
-                  );
-                },
-
               ),
             ),
 

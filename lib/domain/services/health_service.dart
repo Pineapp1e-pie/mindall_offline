@@ -70,11 +70,21 @@
 import 'package:health/health.dart';
 import 'package:flutter/services.dart';
 import '../models/health_draft.dart';
+import 'subscription_service.dart';
 
 class HealthService {
   final Health _health = Health();
+  final SubscriptionService? _subscriptionService;
+
+  HealthService([this._subscriptionService]);
+
+  bool get _canAutoFetch =>
+      _subscriptionService?.checkAccess(SubscriptionFeature.autoHealthData) ??
+      true;
 
   Future<bool> requestPermissions() async {
+    if (!_canAutoFetch) return false;
+
     print('🟡 HealthService: requestPermissions() started');
 
     try {
@@ -103,7 +113,6 @@ class HealthService {
 
       // result уже bool, не нужно преобразовывать
       return result;
-
     } on PlatformException catch (e) {
       print('❌ PlatformException: ${e.message}');
       print('   code: ${e.code}');
@@ -122,6 +131,8 @@ class HealthService {
   }
 
   Future<int?> getStepAmount({DateTime? date}) async {
+    if (!_canAutoFetch) return null;
+
     print('🟡 HealthService: getStepAmount() started');
 
     try {
@@ -136,7 +147,6 @@ class HealthService {
 
       print('✅ Total steps: $steps');
       return steps;
-
     } catch (e) {
       print('❌ Error in getStepAmount: $e');
       return null;
@@ -144,6 +154,8 @@ class HealthService {
   }
 
   Future<int?> getSleepMinutes({DateTime? date}) async {
+    if (!_canAutoFetch) return null;
+
     print('🟡 HealthService: getSleepMinutes() started');
 
     try {
@@ -168,7 +180,9 @@ class HealthService {
       }
 
       // Берём только сессии, закончившиеся в нужный день
-      final todaySessions = data.where((item) => item.dateTo.isAfter(dayMidnight)).toList();
+      final todaySessions = data
+          .where((item) => item.dateTo.isAfter(dayMidnight))
+          .toList();
 
       if (todaySessions.isEmpty) {
         print('ℹ️ No sleep data for today');
@@ -177,14 +191,18 @@ class HealthService {
 
       double totalMinutes = 0;
       for (final item in todaySessions) {
-        final minutes = item.dateTo.difference(item.dateFrom).inMinutes.toDouble();
-        print('   - Sleep session: ${item.dateFrom} → ${item.dateTo} = $minutes min');
+        final minutes = item.dateTo
+            .difference(item.dateFrom)
+            .inMinutes
+            .toDouble();
+        print(
+          '   - Sleep session: ${item.dateFrom} → ${item.dateTo} = $minutes min',
+        );
         totalMinutes += minutes;
       }
 
       print('✅ Total sleep: $totalMinutes minutes');
       return totalMinutes.round();
-
     } catch (e) {
       print('❌ Error in getSleepMinutes: $e');
       return null;
@@ -192,6 +210,8 @@ class HealthService {
   }
 
   Future<CyclePhase?> getCyclePhase() async {
+    if (!_canAutoFetch) return null;
+
     print('🟡 HealthService: getCyclePhase() started');
 
     try {
@@ -213,7 +233,6 @@ class HealthService {
 
       // Есть flow за последние 7 дней — фаза менструации
       return CyclePhase.menstruation;
-
     } catch (e) {
       print('❌ Error in getCyclePhase: $e');
       return null;
@@ -222,6 +241,8 @@ class HealthService {
 
   // Добавим метод для проверки доступности Health Connect
   Future<bool> isHealthConnectAvailable() async {
+    if (!_canAutoFetch) return false;
+
     try {
       // Пробуем запросить минимальные разрешения
       final result = await _health.requestAuthorization(

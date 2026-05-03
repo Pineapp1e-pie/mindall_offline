@@ -75,6 +75,8 @@ abstract class LocalRepository {
 
   Future<void> updateNote(int entryId, String? note);
 
+  Future<void> removeTagFromEntry(int entryId, int tagId);
+
   Future<MoodEntryDraft> getMoodEntryAsDraft(int entryId);
 
   Future<void> updateFullEntry(int entryId, MoodEntryDraft draft);

@@ -18,6 +18,8 @@ class SupabaseSyncService {
   final SupabaseClient _client;
   final FileStorageService _files;
 
+  bool _isSyncing = false;
+
   SupabaseSyncService(this._db)
       : _client = Supabase.instance.client,
         _files = FileStorageService();
@@ -32,14 +34,24 @@ class SupabaseSyncService {
   /// потом скачиваем из облака то, чего нет локально.
   Future<void> syncAll() async {
     if (_client.auth.currentUser == null) return;
+    if (_isSyncing) return;
+    _isSyncing = true;
     try {
-      await flushPendingDeletions();
-      await _upload();
-      await _download();
-      await _syncAchievementsFromSupabase();
-      await _syncAchievementsToSupabase();
+      await _step('deletions', flushPendingDeletions().timeout(const Duration(seconds: 10)));
+      await _step('upload', _upload().timeout(const Duration(seconds: 30)));
+      await _step('download', _download().timeout(const Duration(seconds: 30)));
+      await _step('achievements↓', _syncAchievementsFromSupabase().timeout(const Duration(seconds: 10)));
+      await _step('achievements↑', _syncAchievementsToSupabase().timeout(const Duration(seconds: 10)));
+    } finally {
+      _isSyncing = false;
+    }
+  }
+
+  Future<void> _step(String name, Future<void> work) async {
+    try {
+      await work;
     } catch (e, st) {
-      print('[Sync] ошибка syncAll: $e\n$st');
+      print('[Sync] ошибка $name: $e\n$st');
     }
   }
 
@@ -522,6 +534,19 @@ class SupabaseSyncService {
       await _removePendingHealthDeletion(dateStr);
     } catch (e) {
       print('[Sync] ошибка deleteHealthForDay, добавлено в очередь: $e');
+    }
+  }
+
+  /// Удаляет тег записи из Supabase.
+  Future<void> deleteTagFromEntry(DateTime entryCreatedAt, String tagName) async {
+    if (_client.auth.currentUser == null) return;
+    try {
+      await _client.from('mood_entry_tags').delete()
+          .eq('user_id', _userId)
+          .eq('mood_entry_created_at', entryCreatedAt.toUtc().toIso8601String())
+          .eq('tag_name', tagName);
+    } catch (e) {
+      print('[Sync] deleteTagFromEntry error: $e');
     }
   }
 

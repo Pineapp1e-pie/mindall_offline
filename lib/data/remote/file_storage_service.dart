@@ -114,4 +114,11 @@ class FileStorageService {
       return null;
     }
   }
+  Future<File> getLocalFileForStoragePath(String storagePath) async {
+    final directory = await getApplicationDocumentsDirectory();
+    // Очищаем путь от лишних данных, если нужно, и создаем полный путь
+    // Обычно это /documents_dir/user_id/filename.ext
+    final localPath = '${directory.path}/$storagePath';
+    return File(localPath);
+  }
 }

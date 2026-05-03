@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../data/local/repositories/local_repository.dart';
+import '../../data/remote/supabase_sync_service.dart';
 import '../../domain/models/mood_entry_with_mood.dart';
 import '../models/mood_entry_ui_model.dart';
 import 'home_screen.dart';
@@ -65,6 +66,10 @@ class _HomeContainerState extends State<HomeContainer> {
           selectedDate: _selectedDate,
           isToday: _isToday,
           onDateChanged: _onDateChanged,
+          onRefresh: () => context
+              .read<SupabaseSyncService>()
+              .syncAll()
+              .timeout(const Duration(seconds: 30), onTimeout: () {}),
         );
       },
     );

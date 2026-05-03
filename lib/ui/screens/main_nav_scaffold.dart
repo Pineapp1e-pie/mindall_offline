@@ -9,6 +9,7 @@ import '../../domain/models/achievement.dart';
 import '../../domain/services/achievement_service.dart';
 import '../../domain/services/crisis_detector.dart';
 import '../../domain/services/health_service.dart';
+import '../../domain/services/subscription_service.dart';
 import '../widgets/achievement_popup.dart';
 import 'home_container.dart';
 import 'analytics_screen.dart';
@@ -17,10 +18,7 @@ import 'profile_screen.dart';
 class MainNavScaffold extends StatefulWidget {
   final CrisisLevel crisisLevel;
 
-  const MainNavScaffold({
-    super.key,
-    this.crisisLevel = CrisisLevel.none,
-  });
+  const MainNavScaffold({super.key, this.crisisLevel = CrisisLevel.none});
 
   @override
   State<MainNavScaffold> createState() => _MainNavScaffoldState();
@@ -29,13 +27,8 @@ class MainNavScaffold extends StatefulWidget {
 class _MainNavScaffoldState extends State<MainNavScaffold>
     with WidgetsBindingObserver {
   int _currentIndex = 0;
-  final _healthService = HealthService();
 
-  final _screens = const [
-    HomeContainer(),
-    AnalyticsScreen(),
-    ProfileScreen(),
-  ];
+  final _screens = const [HomeContainer(), AnalyticsScreen(), ProfileScreen()];
 
   @override
   void initState() {
@@ -57,8 +50,7 @@ class _MainNavScaffoldState extends State<MainNavScaffold>
       if (!mounted) return;
 
       // Миграция существующих пользователей: инициализируем ачивки и проверяем
-      final userId =
-          Supabase.instance.client.auth.currentUser?.id ?? '';
+      final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
       if (userId.isEmpty) return;
 
       final newAchievements = await context
@@ -96,24 +88,28 @@ class _MainNavScaffoldState extends State<MainNavScaffold>
       final todayStart = DateTime(today.year, today.month, today.day);
 
       // Обновляем только если есть запись здоровья за сегодня
-      final existing = await (db.select(db.healthData)
-            ..where((h) => h.date.equals(todayStart)))
-          .getSingleOrNull();
+      final existing = await (db.select(
+        db.healthData,
+      )..where((h) => h.date.equals(todayStart))).getSingleOrNull();
 
       if (existing == null) return;
+      if (!mounted) return;
 
-      final steps = await _healthService.getStepAmount(date: today);
+      final healthService = HealthService(context.read<SubscriptionService>());
+      final steps = await healthService.getStepAmount(date: today);
       if (steps == null) return;
 
-      await db.into(db.healthData).insertOnConflictUpdate(
-        HealthDataCompanion.insert(
-          date: todayStart,
-          sleepMinutes: Value(existing.sleepMinutes),
-          stepsAmount: Value(steps),
-          cyclePhase: Value(existing.cyclePhase),
-          source: const Value('auto'),
-        ),
-      );
+      await db
+          .into(db.healthData)
+          .insertOnConflictUpdate(
+            HealthDataCompanion.insert(
+              date: todayStart,
+              sleepMinutes: Value(existing.sleepMinutes),
+              stepsAmount: Value(steps),
+              cyclePhase: Value(existing.cyclePhase),
+              source: const Value('auto'),
+            ),
+          );
     } catch (_) {}
   }
 
@@ -121,10 +117,7 @@ class _MainNavScaffoldState extends State<MainNavScaffold>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0E1511),
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: _BottomMenu(
         currentIndex: _currentIndex,
         onIndexChanged: (i) => setState(() => _currentIndex = i),
@@ -137,10 +130,7 @@ class _BottomMenu extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onIndexChanged;
 
-  const _BottomMenu({
-    required this.currentIndex,
-    required this.onIndexChanged,
-  });
+  const _BottomMenu({required this.currentIndex, required this.onIndexChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -246,7 +236,7 @@ class _SupportDialogState extends State<_SupportDialog> {
       case CrisisLevel.softStreak:
         return 'Похоже, последние дни даются непросто. '
             'Иногда помогает немного замедлиться, выйти на прогулку или поговорить с кем-то';
-         case CrisisLevel.urgentStreak:
+      case CrisisLevel.urgentStreak:
         return 'Похоже, это состояние держится уже какое-то время. '
             'В такие моменты важно не оставаться совсем одному. Можно поговорить с близким или обратиться за поддержкой. Это нормально)';
       case CrisisLevel.crisis:
@@ -262,8 +252,8 @@ class _SupportDialogState extends State<_SupportDialog> {
       widget.level == CrisisLevel.crisis;
 
   Color get _accentColor => widget.level == CrisisLevel.softStreak
-      ? const Color(0xFF7EB8D4)   // спокойный голубой
-      : const Color(0xFFD49C7E);  // более насыщенный синий
+      ? const Color(0xFF7EB8D4) // спокойный голубой
+      : const Color(0xFFD49C7E); // более насыщенный синий
 
   Future<void> _copyPhone() async {
     await Clipboard.setData(const ClipboardData(text: _phone));
@@ -314,7 +304,10 @@ class _SupportDialogState extends State<_SupportDialog> {
               const SizedBox(height: 24),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
                 decoration: BoxDecoration(
                   border: Border.all(color: _accentColor.withOpacity(0.5)),
                 ),
@@ -327,7 +320,7 @@ class _SupportDialogState extends State<_SupportDialog> {
                         fontFamily: 'DotGothic',
                         fontSize: 12,
                         color: _accentColor.withOpacity(0.8),
-                        ),
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -356,9 +349,7 @@ class _SupportDialogState extends State<_SupportDialog> {
                         style: TextStyle(
                           fontFamily: 'DotGothic',
                           fontSize: 13,
-                          color: _copied
-                              ? Colors.white38
-                              : _accentColor,
+                          color: _copied ? Colors.white38 : _accentColor,
                         ),
                       ),
                     ),

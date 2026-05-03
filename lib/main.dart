@@ -17,6 +17,7 @@ import 'data/local/static/context_tags_seed.dart';
 import 'background/step_sync_worker.dart';
 import 'domain/services/achievement_service.dart';
 import 'domain/services/notification_service.dart';
+import 'domain/services/subscription_service.dart';
 import 'domain/services/user_profile_service.dart';
 
 import 'ui/screens/main_nav_scaffold.dart';
@@ -50,6 +51,8 @@ void main() async {
   final syncService = SupabaseSyncService(database);
   final profileService = UserProfileService();
   await profileService.init();
+  final subscriptionService = SubscriptionService(profileService);
+  await subscriptionService.init();
 
   await MoodsInitializer(database).init();
   await ContextTagsInitializer(database).init();
@@ -72,6 +75,7 @@ void main() async {
         Provider<SupabaseSyncService>(create: (_) => syncService),
         Provider<AchievementService>(create: (_) => achievementService),
         ChangeNotifierProvider<UserProfileService>(create: (_) => profileService),
+        ChangeNotifierProvider<SubscriptionService>(create: (_) => subscriptionService),
       ],
       child: const MyApp(),
     ),
@@ -101,6 +105,7 @@ class _MyAppState extends State<MyApp> {
     if (_loggedIn) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         context.read<SupabaseSyncService>().syncAll();
+        context.read<SubscriptionService>().syncLocalToRemote();
       });
     }
 
@@ -123,6 +128,7 @@ class _MyAppState extends State<MyApp> {
 
       if (!wasLoggedIn && data.session != null) {
         context.read<SupabaseSyncService>().syncAll();
+        context.read<SubscriptionService>().syncLocalToRemote();
         NotificationService().registerToken();
         NotificationService().loadSettingsFromRemote();
       }
@@ -134,6 +140,7 @@ class _MyAppState extends State<MyApp> {
       final isOnline = results.any((r) => r != ConnectivityResult.none);
       if (isOnline && _wasOffline && _loggedIn) {
         context.read<SupabaseSyncService>().syncAll();
+        context.read<SubscriptionService>().syncLocalToRemote();
       }
       _wasOffline = !isOnline;
     });

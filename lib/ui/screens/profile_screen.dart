@@ -12,12 +12,13 @@ import '../../data/local/repositories/local_repository.dart';
 import '../../domain/models/achievement.dart';
 import '../../domain/models/user_profile.dart';
 import '../../domain/services/notification_service.dart';
+import '../../domain/services/subscription_service.dart';
 import '../../domain/services/user_profile_service.dart';
 import '../widgets/achievement_popup.dart';
 import 'auth_screen.dart';
 import 'cycle_setup_screen.dart';
 
-const _accentGreen  = Color(0xFF83F483);
+const _accentGreen = Color(0xFF83F483);
 const _accentYellow = Color(0xFFFFEB89);
 const _accentPurple = Color(0xFF9B7BFF);
 
@@ -96,6 +97,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _syncFromRemote(User user) async {
+    final subscriptionService = context.read<SubscriptionService>();
     final profile = await _client
         .from('profiles')
         .select()
@@ -130,6 +132,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           'user_id': user.id,
           'username': newUsername,
           'gender': newGender?.name,
+          'subscription_type': subscriptionService.type.name,
         });
       }
     }
@@ -137,11 +140,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // Сохраняем в кеш
     if (newUsername != null) await _profileService.saveUsername(newUsername);
     if (newGender != null) await _profileService.saveGender(newGender);
+    await subscriptionService.syncFromRemote(user);
 
     // Обновляем UI если данные изменились
     if (mounted) {
       setState(() {
-        if (newUsername != null) _username = newUsername!;
+        if (newUsername != null) _username = newUsername;
         if (newGender != null) _gender = newGender;
       });
     }
@@ -203,12 +207,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         password: result.oldPassword,
       );
       // Меняем пароль
-      await _client.auth.updateUser(UserAttributes(password: result.newPassword));
+      await _client.auth.updateUser(
+        UserAttributes(password: result.newPassword),
+      );
       TextInput.finishAutofillContext(shouldSave: true);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Пароль обновлён')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Пароль обновлён')));
       }
     } on AuthException {
       if (mounted) {
@@ -219,7 +225,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Проверьте подключение к интернету или VPN')),
+          const SnackBar(
+            content: Text('Проверьте подключение к интернету или VPN'),
+          ),
         );
       }
     }
@@ -240,16 +248,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         content: const Text(
           'Все данные будут удалены. Это действие нельзя отменить.',
-          style: TextStyle(fontFamily: 'DotGothic', color: Colors.white54, fontSize: 13),
+          style: TextStyle(
+            fontFamily: 'DotGothic',
+            color: Colors.white54,
+            fontSize: 13,
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена', style: TextStyle(color: Colors.white38)),
+            child: const Text(
+              'Отмена',
+              style: TextStyle(color: Colors.white38),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Удалить', style: TextStyle(color: Color(0xFFFF6B6B))),
+            child: const Text(
+              'Удалить',
+              style: TextStyle(color: Color(0xFFFF6B6B)),
+            ),
           ),
         ],
       ),
@@ -266,16 +284,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         content: const Text(
           'Восстановить аккаунт будет невозможно.',
-          style: TextStyle(fontFamily: 'DotGothic', color: Colors.white54, fontSize: 13),
+          style: TextStyle(
+            fontFamily: 'DotGothic',
+            color: Colors.white54,
+            fontSize: 13,
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена', style: TextStyle(color: Colors.white38)),
+            child: const Text(
+              'Отмена',
+              style: TextStyle(color: Colors.white38),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Да, удалить', style: TextStyle(color: Color(0xFFFF6B6B))),
+            child: const Text(
+              'Да, удалить',
+              style: TextStyle(color: Color(0xFFFF6B6B)),
+            ),
           ),
         ],
       ),
@@ -286,20 +314,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await _client.functions.invoke('delete-account');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
       }
       return;
     }
 
     await context.read<LocalRepository>().clearUserData();
     await _profileService.clearAll();
+    await context.read<SubscriptionService>().clearLocalState();
     if (mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        AppRoute(page: const AuthScreen()),
-        (_) => false,
-      );
+      Navigator.of(
+        context,
+      ).pushAndRemoveUntil(AppRoute(page: const AuthScreen()), (_) => false);
     }
   }
 
@@ -310,12 +338,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _signOut() async {
     await context.read<LocalRepository>().clearUserData();
     await _profileService.clearAll();
+    await context.read<SubscriptionService>().clearLocalState();
     await _client.auth.signOut();
     if (mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        AppRoute(page: const AuthScreen()),
-        (_) => false,
-      );
+      Navigator.of(
+        context,
+      ).pushAndRemoveUntil(AppRoute(page: const AuthScreen()), (_) => false);
     }
   }
 
@@ -326,7 +354,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _openCycleSetup() async {
     final result = await Navigator.push<CycleSettings>(
       context,
-      AppRoute(page: CycleSetupScreen(
+      AppRoute(
+        page: CycleSetupScreen(
           moodColor: Colors.white,
           initial: _cycleSettings,
         ),
@@ -357,7 +386,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     }
     setState(() => _notifEnabled = value);
-    await _profileService.saveNotificationSettings(value, _notifHour, _notifMinute);
+    await _profileService.saveNotificationSettings(
+      value,
+      _notifHour,
+      _notifMinute,
+    );
     await NotificationService().saveNotificationSettings(
       enabled: value,
       hour: _notifHour,
@@ -392,7 +425,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _notifHour = picked.hour;
       _notifMinute = picked.minute;
     });
-    await _profileService.saveNotificationSettings(_notifEnabled, _notifHour, _notifMinute);
+    await _profileService.saveNotificationSettings(
+      _notifEnabled,
+      _notifHour,
+      _notifMinute,
+    );
 
     final online = await _hasInternet();
     if (!online) {
@@ -418,11 +455,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   String _genderLabel(Gender? gender) {
     switch (gender) {
-      case Gender.female: return 'женщина';
-      case Gender.male: return 'мужчина';
-      case Gender.preferNotToSay: return 'не указан';
-      case null: return 'не указан';
+      case Gender.female:
+        return 'женщина';
+      case Gender.male:
+        return 'мужчина';
+      case Gender.preferNotToSay:
+        return 'не указан';
+      case null:
+        return 'не указан';
     }
+  }
+
+  String _subscriptionLabel(SubscriptionType type) {
+    return switch (type) {
+      SubscriptionType.free => 'Бесплатный',
+      SubscriptionType.premium => 'Premium',
+    };
+  }
+
+  Future<void> _showSubscriptionDialog() async {
+    final shouldToggle = await showDialog<bool>(
+      context: context,
+      builder: (_) => const _SubscriptionDialog(),
+    );
+    if (shouldToggle != true || !mounted) return;
+
+    await context.read<SubscriptionService>().toggleSubscription();
+    if (!mounted) return;
+
+    final type = context.read<SubscriptionService>().type;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Тариф изменён: ${_subscriptionLabel(type)}',
+          style: const TextStyle(fontFamily: 'DotGothic'),
+        ),
+      ),
+    );
   }
 
   Future<void> _toggleCycle(bool value) async {
@@ -450,6 +519,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     final isFemale = _gender == Gender.female;
+    final subscription = context.watch<SubscriptionService>();
 
     return Scaffold(
       backgroundColor: const Color(0xFF0E1511),
@@ -515,20 +585,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             // ── Редактировать профиль ───────────────
             _SectionLabel('редактировать профиль', color: _accentYellow),
-            _SettingRow(
-              label: 'имя',
-              value: _username,
-              onTap: _editUsername,
-            ),
+            _SettingRow(label: 'имя', value: _username, onTap: _editUsername),
             _SettingRow(
               label: 'пол',
               value: _genderLabel(_gender),
               onTap: _editGender,
             ),
-            _SettingRow(
-              label: 'почта',
-              value: _email,
-            ),
+            _SettingRow(label: 'почта', value: _email),
             _SettingRow(
               label: 'пароль',
               value: '••••••',
@@ -541,8 +604,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _SectionLabel('настройки', color: _accentGreen),
             _SettingRow(
               label: 'тариф',
-              value: 'бесплатный',
+              value: _subscriptionLabel(subscription.type),
             ),
+            _SettingRow(label: 'сменить тариф', onTap: _showSubscriptionDialog),
             _SettingRow(
               label: 'уведомления',
               trailing: Switch(
@@ -576,10 +640,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               if (_trackCycle)
-                _SettingRow(
-                  label: 'настройки цикла',
-                  onTap: _openCycleSetup,
-                ),
+                _SettingRow(label: 'настройки цикла', onTap: _openCycleSetup),
             ],
 
             const SizedBox(height: 24),
@@ -591,10 +652,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               labelColor: const Color(0xFFFF6B6B),
               onTap: _deleteAccount,
             ),
-            _SettingRow(
-              label: 'выйти',
-              onTap: _signOut,
-            ),
+            _SettingRow(label: 'выйти', onTap: _signOut),
 
             const SizedBox(height: 48),
           ],
@@ -687,7 +745,11 @@ class _SettingRow extends StatelessWidget {
                     ),
                   if (onTap != null) ...[
                     const SizedBox(width: 6),
-                    const Icon(Icons.chevron_right, color: Colors.white24, size: 18),
+                    const Icon(
+                      Icons.chevron_right,
+                      color: Colors.white24,
+                      size: 18,
+                    ),
                   ],
                 ],
               ),
@@ -699,10 +761,18 @@ class _SettingRow extends StatelessWidget {
 }
 
 const _moodPalette = [
-  Color(0xFFFF5959), Color(0xFFFF7979), Color(0xFFFFAEAE),
-  Color(0xFF835AFF), Color(0xFF9B7BFF), Color(0xFFB8A1FF),
-  Color(0xFF46FF46), Color(0xFF66FF66), Color(0xFF83F483),
-  Color(0xFFFFDD3B), Color(0xFFFCE365), Color(0xFFFFEB89),
+  Color(0xFFFF5959),
+  Color(0xFFFF7979),
+  Color(0xFFFFAEAE),
+  Color(0xFF835AFF),
+  Color(0xFF9B7BFF),
+  Color(0xFFB8A1FF),
+  Color(0xFF46FF46),
+  Color(0xFF66FF66),
+  Color(0xFF83F483),
+  Color(0xFFFFDD3B),
+  Color(0xFFFCE365),
+  Color(0xFFFFEB89),
 ];
 
 class _AchievementCard extends StatelessWidget {
@@ -715,7 +785,9 @@ class _AchievementCard extends StatelessWidget {
     final earned = achievement.isAchieved;
     final color = earned ? Colors.amber : Colors.white24;
     final borderColor = earned
-        ? _moodPalette[Random(achievement.id.hashCode).nextInt(_moodPalette.length)]
+        ? _moodPalette[Random(
+            achievement.id.hashCode,
+          ).nextInt(_moodPalette.length)]
         : Colors.white24;
 
     String? dateLabel;
@@ -782,7 +854,11 @@ class _EditDialog extends StatelessWidget {
       backgroundColor: const Color(0xFF18221C),
       title: Text(
         title,
-        style: const TextStyle(fontFamily: 'DotGothic', color: Colors.white, fontSize: 16),
+        style: const TextStyle(
+          fontFamily: 'DotGothic',
+          color: Colors.white,
+          fontSize: 16,
+        ),
       ),
       content: TextField(
         controller: controller,
@@ -791,7 +867,10 @@ class _EditDialog extends StatelessWidget {
         style: const TextStyle(fontFamily: 'DotGothic', color: Colors.white),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: const TextStyle(color: Colors.white24, fontFamily: 'DotGothic'),
+          hintStyle: const TextStyle(
+            color: Colors.white24,
+            fontFamily: 'DotGothic',
+          ),
           enabledBorder: const UnderlineInputBorder(
             borderSide: BorderSide(color: Colors.white24),
           ),
@@ -810,6 +889,134 @@ class _EditDialog extends StatelessWidget {
           child: const Text('Сохранить', style: TextStyle(color: Colors.white)),
         ),
       ],
+    );
+  }
+}
+
+class _SubscriptionDialog extends StatelessWidget {
+  const _SubscriptionDialog();
+
+  static const _freeFeatures = [
+    'запись настроения',
+    'базовые графики',
+    'заметки: текст, фото, голос',
+  ];
+
+  static const _premiumFeatures = [
+    'погода и здоровье в записи',
+    'корреляции: сон / шаги / погода / цикл',
+    'расширенная аналитика',
+    'автоматические данные здоровья через health connect',
+    'детальные графики',
+    'экспорт PDF / Excel',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final current = context.watch<SubscriptionService>().type;
+
+    return AlertDialog(
+      backgroundColor: const Color(0xFF18221C),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 18),
+      title: const Text(
+        'Сменить тариф?',
+        style: TextStyle(
+          fontFamily: 'DotGothic',
+          color: Colors.white,
+          fontSize: 16,
+        ),
+      ),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _PlanColumn(
+              title: 'FREE',
+              features: _freeFeatures,
+              accent: _accentGreen,
+              active: current == SubscriptionType.free,
+            ),
+            const SizedBox(height: 10),
+            _PlanColumn(
+              title: 'PREMIUM',
+              features: _premiumFeatures,
+              accent: _accentYellow,
+              active: current == SubscriptionType.premium,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Отмена', style: TextStyle(color: Colors.white38)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: Text(
+            current == SubscriptionType.premium
+                ? 'Перейти на FREE'
+                : 'Перейти на Premium',
+            style: const TextStyle(color: Colors.white),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PlanColumn extends StatelessWidget {
+  final String title;
+  final List<String> features;
+  final Color accent;
+  final bool active;
+
+  const _PlanColumn({
+    required this.title,
+    required this.features,
+    required this.accent,
+    required this.active,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        border: Border.all(color: active ? accent : Colors.white24, width: 1.5),
+        color: active ? Colors.white10 : Colors.transparent,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            active ? '$title · сейчас' : title,
+            style: TextStyle(
+              fontFamily: 'DotGothic',
+              color: accent,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 10),
+          for (final feature in features)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '• $feature',
+                style: const TextStyle(
+                  fontFamily: 'DotGothic',
+                  color: Colors.white70,
+                  fontSize: 11,
+                  height: 1.3,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -841,7 +1048,11 @@ class _GenderDialogState extends State<_GenderDialog> {
       backgroundColor: const Color(0xFF18221C),
       title: const Text(
         'Пол',
-        style: TextStyle(fontFamily: 'DotGothic', color: Colors.white, fontSize: 16),
+        style: TextStyle(
+          fontFamily: 'DotGothic',
+          color: Colors.white,
+          fontSize: 16,
+        ),
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -947,29 +1158,33 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
       backgroundColor: const Color(0xFF18221C),
       title: const Text(
         'Сменить пароль',
-        style: TextStyle(fontFamily: 'DotGothic', color: Colors.white, fontSize: 16),
+        style: TextStyle(
+          fontFamily: 'DotGothic',
+          color: Colors.white,
+          fontSize: 16,
+        ),
       ),
       content: AutofillGroup(
         child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _field(_oldCtrl, 'текущий пароль', null),
-          const SizedBox(height: 16),
-          _field(_newCtrl, 'новый пароль', AutofillHints.newPassword),
-          const SizedBox(height: 16),
-          _field(_confirmCtrl, 'повтори новый', null),
-          if (_error != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              _error!,
-              style: const TextStyle(
-                fontFamily: 'DotGothic',
-                color: Color(0xFFFF6B6B),
-                fontSize: 12,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _field(_oldCtrl, 'текущий пароль', null),
+            const SizedBox(height: 16),
+            _field(_newCtrl, 'новый пароль', AutofillHints.newPassword),
+            const SizedBox(height: 16),
+            _field(_confirmCtrl, 'повтори новый', null),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                style: const TextStyle(
+                  fontFamily: 'DotGothic',
+                  color: Color(0xFFFF6B6B),
+                  fontSize: 12,
+                ),
               ),
-            ),
+            ],
           ],
-        ],
         ),
       ),
       actions: [
@@ -990,12 +1205,24 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
       controller: ctrl,
       obscureText: true,
       autofillHints: autofillHint != null ? [autofillHint] : const [],
-      style: const TextStyle(fontFamily: 'DotGothic', color: Colors.white, fontSize: 14),
+      style: const TextStyle(
+        fontFamily: 'DotGothic',
+        color: Colors.white,
+        fontSize: 14,
+      ),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: Colors.white24, fontFamily: 'DotGothic', fontSize: 14),
-        enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-        focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
+        hintStyle: const TextStyle(
+          color: Colors.white24,
+          fontFamily: 'DotGothic',
+          fontSize: 14,
+        ),
+        enabledBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: Colors.white24),
+        ),
+        focusedBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: Colors.white),
+        ),
       ),
     );
   }

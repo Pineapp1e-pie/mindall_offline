@@ -288,9 +288,15 @@ class MoodMatrixScreen extends StatefulWidget {
 
 }
 
-class _MoodMatrixScreenState extends State<MoodMatrixScreen> {
+class _MoodMatrixScreenState extends State<MoodMatrixScreen>
+    with SingleTickerProviderStateMixin {
   late final AppDatabase _db;
   late final TransformationController _controller;
+  late final Future<List<Mood>> _moodsFuture;
+  late final AnimationController _panController;
+  Animation<double>? _panAnim;
+  Matrix4? _panFrom;
+  Matrix4? _panTo;
   Mood? _selectedMood;
 
   // Константы для сетки 6×6 с кругами 240px
@@ -305,8 +311,12 @@ class _MoodMatrixScreenState extends State<MoodMatrixScreen> {
   void initState() {
     super.initState();
     _db = AppDatabase();
+    _moodsFuture = _db.select(_db.moods).get();
     _controller = TransformationController();
-
+    _panController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusCategory();
     });
@@ -325,6 +335,44 @@ class _MoodMatrixScreenState extends State<MoodMatrixScreen> {
     _controller.value = Matrix4.identity()..translate(dx, dy);
   }
 
+  void _centerMood(Mood mood) {
+    final col = ((mood.x + 1) * 2.5).round().clamp(0, 5);
+    final row = ((1 - mood.y) * 2.5).round().clamp(0, 5);
+
+    // Центр круга в координатах дочернего виджета
+    final cx = col * cell + spacing / 2 + circle / 2;
+    final cy = row * cell + spacing / 2 + circle / 2;
+
+    final screen = MediaQuery.of(context).size;
+    final scale = _controller.value.getMaxScaleOnAxis();
+
+    _panFrom = _controller.value.clone();
+    _panTo = Matrix4.identity()
+      ..scale(scale)
+      ..translate(
+        screen.width / (2 * scale) - cx,
+        screen.height / (2 * scale) - cy,
+      );
+
+    _panAnim?.removeListener(_applyPan);
+    _panAnim = CurvedAnimation(
+      parent: _panController,
+      curve: Curves.easeInOut,
+    );
+    _panAnim!.addListener(_applyPan);
+    _panController.forward(from: 0);
+  }
+
+  void _applyPan() {
+    if (_panFrom == null || _panTo == null || _panAnim == null) return;
+    final t = _panAnim!.value;
+    final result = Matrix4.zero();
+    for (int i = 0; i < 16; i++) {
+      result[i] = _panFrom![i] + (_panTo![i] - _panFrom![i]) * t;
+    }
+    _controller.value = result;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -339,7 +387,7 @@ class _MoodMatrixScreenState extends State<MoodMatrixScreen> {
 
       ),
       body: FutureBuilder<List<Mood>>(
-        future: _db.select(_db.moods).get(),
+        future: _moodsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -460,9 +508,8 @@ class _MoodMatrixScreenState extends State<MoodMatrixScreen> {
                 top: dy,
                 child: GestureDetector(
                   onTap: () {
-                    setState(() {
-                      _selectedMood = mood;
-                    });
+                    setState(() => _selectedMood = mood);
+                    _centerMood(mood);
                   },
                   child: TweenAnimationBuilder<double>(
                     tween: Tween<double>(
@@ -549,6 +596,8 @@ class _MoodMatrixScreenState extends State<MoodMatrixScreen> {
 
   @override
   void dispose() {
+    _panAnim?.removeListener(_applyPan);
+    _panController.dispose();
     _controller.dispose();
     _db.close();
     super.dispose();

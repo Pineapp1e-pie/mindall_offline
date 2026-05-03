@@ -615,9 +615,9 @@ class LocalRepositoryImpl implements LocalRepository {
 
   @override
   Future<List<DateTime>> getUniqueMoodEntryDates(String userId) async {
-    // created_at is stored as milliseconds since epoch (Drift default)
+    // created_at is stored as Unix seconds (Drift's currentDateAndTime = strftime('%s','now'))
     final rows = await db.customSelect(
-      "SELECT DISTINCT date(created_at / 1000, 'unixepoch', 'localtime') AS d "
+      "SELECT DISTINCT date(created_at, 'unixepoch', 'localtime') AS d "
       'FROM mood_entries WHERE user_id = ? ORDER BY d DESC',
       variables: [Variable.withString(userId)],
       readsFrom: {db.moodEntries},
@@ -666,5 +666,13 @@ class LocalRepositoryImpl implements LocalRepository {
         ),
       );
     }
+  }
+
+  @override
+  Future<void> removeTagFromEntry(int entryId, int tagId) async {
+    await (db.delete(db.moodEntryTags)
+          ..where((t) =>
+              t.moodEntryId.equals(entryId) & t.tagId.equals(tagId)))
+        .go();
   }
 }

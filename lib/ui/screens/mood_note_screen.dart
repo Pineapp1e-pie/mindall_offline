@@ -6,17 +6,26 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/public/flutter_sound_recorder.dart'; // 👈 для записи
-import 'package:just_audio/just_audio.dart'; // 👈 для воспроизведения
 import 'package:flutter_svg/svg.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mindall/ui/screens/weather_step.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/local/repositories/local_repository.dart';
+import '../../data/remote/supabase_sync_service.dart';
 import '../../domain/models/mood_entry_draft.dart';
+import '../../domain/services/achievement_service.dart';
+import '../../domain/services/crisis_detector.dart';
+import '../../domain/services/daily_mood_analyzer.dart';
+import '../../domain/services/subscription_service.dart';
 import '../widgets/step_indicator.dart';
 import '../widgets/bottom_button.dart';
 import '../widgets/voice_player.dart';
+import '../widgets/achievement_popup.dart';
+import 'main_nav_scaffold.dart';
 
 class MoodNoteScreen extends StatefulWidget {
   final MoodEntryDraft draft;
@@ -45,6 +54,7 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
   // final _audioPlayer = AudioPlayer();
 
   bool _isRecording = false;
+  bool _saving = false;
   String? _recordingPath;
   Duration _recordingDuration = Duration.zero;
   Timer? _recordingTimer;
@@ -63,7 +73,8 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
 
   Future<void> _startRecording() async {
     final dir = await getApplicationDocumentsDirectory();
-    final path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.aac';
+    final path =
+        '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.aac';
 
     await _recorder.startRecorder(toFile: path);
 
@@ -127,7 +138,10 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
                 Navigator.pop(context);
                 openAppSettings();
               },
-              child: const Text('Настройки', style: TextStyle(color: Colors.white)),
+              child: const Text(
+                'Настройки',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -142,9 +156,6 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
       _draft = _draft.copyWith(recordPath: null);
     });
   }
-
-
-
 
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
@@ -201,32 +212,139 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
 
     if (source == null) return;
 
-    final file = await picker.pickImage(
-      source: source,
-      imageQuality: 85,
-    );
+    final file = await picker.pickImage(source: source, imageQuality: 85);
 
     if (file != null && mounted) {
       setState(() {
-        _draft = _draft.copyWith(
-          imagePaths: [..._draft.imagePaths, file.path],
-        );
+        _draft = _draft.copyWith(imagePaths: [..._draft.imagePaths, file.path]);
       });
     }
   }
 
   void _saveAndContinue() {
     _draft = _draft.copyWith(note: _textController.text);
+    final canUseWeather = context.read<SubscriptionService>().checkAccess(
+      SubscriptionFeature.weatherData,
+    );
+    if (!canUseWeather) {
+      _saveFreeEntry();
+      return;
+    }
+
     _goToWeather();
+  }
+
+  Future<void> _saveFreeEntry() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+
+    final repository = context.read<LocalRepository>();
+    final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
+    final achievementSvc = userId.isNotEmpty
+        ? context.read<AchievementService>()
+        : null;
+    final syncSvc = context.read<SupabaseSyncService>();
+
+    try {
+      final entryDate = _draft.entryDate ?? DateTime.now();
+
+      if (_draft.editingEntryId != null) {
+        await repository.updateFullEntry(_draft.editingEntryId!, _draft);
+      } else {
+        await repository.saveFullEntry(_draft);
+      }
+
+      await DailyMoodAnalyzer(repository).analyzeDay(entryDate);
+
+      if (achievementSvc != null) {
+        final newAchievements = await achievementSvc.checkAfterEntrySaved(
+          userId,
+        );
+
+        if (mounted) {
+          for (final achievement in newAchievements) {
+            if (!mounted) break;
+            await showDialog<void>(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => AchievementUnlockDialog(achievement: achievement),
+            );
+          }
+        }
+      }
+
+      if (!mounted) return;
+
+      final crisisLevel = await _getCrisisLevel(repository, entryDate);
+
+      if (!mounted) return;
+
+      unawaited(
+        syncSvc.syncAll().catchError(
+          (Object e) => print('[Sync] ошибка после сохранения записи: $e'),
+        ),
+      );
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        AppRoute(page: MainNavScaffold(crisisLevel: crisisLevel)),
+        (route) => false,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Не удалось сохранить запись',
+            style: TextStyle(fontFamily: 'DotGothic'),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<CrisisLevel> _getCrisisLevel(
+    LocalRepository repository,
+    DateTime entryDate,
+  ) async {
+    if (CrisisDetector.detect(_draft.note)) return CrisisLevel.crisis;
+
+    final streak = await _countNegativeStreak(repository, entryDate);
+    if (streak >= 7) return CrisisLevel.urgentStreak;
+    if (streak >= 3) return CrisisLevel.softStreak;
+
+    return CrisisLevel.none;
+  }
+
+  Future<int> _countNegativeStreak(
+    LocalRepository repository,
+    DateTime today,
+  ) async {
+    final todayNorm = DateTime(today.year, today.month, today.day);
+    final from = todayNorm.subtract(const Duration(days: 14));
+
+    final stats = await repository.getDailyMoodStats(from, todayNorm);
+
+    var streak = 0;
+    for (var i = stats.length - 1; i >= 0; i--) {
+      final stat = stats[i];
+      final statDay = DateTime(stat.date.year, stat.date.month, stat.date.day);
+      final expected = todayNorm.subtract(Duration(days: streak));
+      if (statDay != expected) break;
+      if (stat.avgX >= 0) break;
+      streak++;
+    }
+
+    return streak;
   }
 
   void _goToWeather() {
     Navigator.push(
       context,
-      AppRoute(page: WeatherStepScreen(
-          draft: _draft,
-          moodColor: widget.moodColor,
-        ),
+      AppRoute(
+        page: WeatherStepScreen(draft: _draft, moodColor: widget.moodColor),
       ),
     );
   }
@@ -235,6 +353,7 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final imageSize = screenWidth - 48;
+    final isPremium = context.watch<SubscriptionService>().isPremium;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0E1511),
@@ -253,7 +372,7 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
               bottom: false,
               child: Column(
                 children: [
-                  _Header(),
+                  _Header(totalSteps: isPremium ? 4 : 2),
                   Expanded(
                     child: SingleChildScrollView(
                       physics: const BouncingScrollPhysics(),
@@ -349,25 +468,25 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
                               _MediaButton(
                                 icon: _isRecording
                                     ? Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: BoxDecoration(
-                                    color: Colors.redAccent,
-                                    border: Border.all(
-                                      color: Colors.white,
-                                      width: 2,
-                                    ),
-                                  ),
-                                )
+                                        width: 24,
+                                        height: 24,
+                                        decoration: BoxDecoration(
+                                          color: Colors.redAccent,
+                                          border: Border.all(
+                                            color: Colors.white,
+                                            width: 2,
+                                          ),
+                                        ),
+                                      )
                                     : SvgPicture.asset(
-                                  'lib/ui/assets/pixelariticons_svg/micro.svg',
-                                  width: 24,
-                                  height: 24,
-                                  colorFilter: const ColorFilter.mode(
-                                    Colors.white,
-                                    BlendMode.srcIn,
-                                  ),
-                                ),
+                                        'lib/ui/assets/pixelariticons_svg/micro.svg',
+                                        width: 24,
+                                        height: 24,
+                                        colorFilter: const ColorFilter.mode(
+                                          Colors.white,
+                                          BlendMode.srcIn,
+                                        ),
+                                      ),
                                 onTap: _toggleRecording,
                               ),
                             ],
@@ -383,7 +502,8 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
                                 scrollDirection: Axis.horizontal,
                                 physics: const BouncingScrollPhysics(),
                                 itemCount: _draft.imagePaths.length,
-                                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(width: 12),
                                 itemBuilder: (context, index) {
                                   final path = _draft.imagePaths[index];
 
@@ -412,17 +532,23 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
                                         child: GestureDetector(
                                           onTap: () {
                                             setState(() {
-                                              final updated = [..._draft.imagePaths]
-                                                ..removeAt(index);
-                                              _draft = _draft.copyWith(imagePaths: updated);
+                                              final updated = [
+                                                ..._draft.imagePaths,
+                                              ]..removeAt(index);
+                                              _draft = _draft.copyWith(
+                                                imagePaths: updated,
+                                              );
                                             });
                                           },
                                           child: Container(
                                             width: 28,
                                             height: 28,
                                             decoration: BoxDecoration(
-                                              color: Colors.black.withOpacity(0.7),
-                                              borderRadius: BorderRadius.circular(14),
+                                              color: Colors.black.withOpacity(
+                                                0.7,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(14),
                                               border: Border.all(
                                                 color: Colors.white,
                                                 width: 1,
@@ -452,21 +578,25 @@ class _MoodNoteScreenState extends State<MoodNoteScreen> {
 
           /// Кнопка "Далее"
           BottomButton(
-            text: 'Далее',
+            text: _saving
+                ? 'Сохранение...'
+                : isPremium
+                ? 'Далее'
+                : 'Сохранить',
             color: widget.moodColor,
-            onTap: _saveAndContinue,
+            onTap: _saving ? () {} : _saveAndContinue,
           ),
         ],
       ),
     );
   }
 
-  Widget _Header() {
+  Widget _Header({required int totalSteps}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
       child: Column(
         children: [
-          StepIndicator(currentStep: 1),
+          StepIndicator(currentStep: 1, totalSteps: totalSteps),
           const SizedBox(height: 24),
           const Text(
             'Хочешь что-нибудь\nзаписать?',
@@ -497,25 +627,16 @@ class _MediaButton extends StatelessWidget {
   final Widget icon;
   final VoidCallback onTap;
 
-  const _MediaButton({
-    required this.icon,
-    required this.onTap,
-  });
+  const _MediaButton({required this.icon, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 12,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          border: Border.all(
-            color: const Color(0xFF555555),
-            width: 2,
-          ),
+          border: Border.all(color: const Color(0xFF555555), width: 2),
         ),
         child: icon,
       ),

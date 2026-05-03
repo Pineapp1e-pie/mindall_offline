@@ -667,4 +667,3 @@ class _HealthBlock extends StatelessWidget {
     );
   }
 }
-
