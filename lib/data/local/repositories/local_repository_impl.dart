@@ -25,6 +25,15 @@ class LocalRepositoryImpl implements LocalRepository {
   String get _userId =>
       Supabase.instance.client.auth.currentUser?.id ?? '';
 
+  DateTime _normalizeDay(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
+
+  bool _hasHealthPayload(HealthDraft? health) =>
+      health != null &&
+      (health.sleepMinutes != null ||
+          health.stepsAmount != null ||
+          health.cyclePhase != null);
+
   // ---------- Mood entries ----------
 
   @override
@@ -230,10 +239,10 @@ class LocalRepositoryImpl implements LocalRepository {
       }
 
       /// 4. health
-      if (draft.health != null) {
+      if (_hasHealthPayload(draft.health)) {
         await db.into(db.healthData).insert(
           HealthDataCompanion.insert(
-            date: draft.health!.date,
+            date: _normalizeDay(draft.health!.date),
             sleepMinutes: Value(draft.health!.sleepMinutes),
             stepsAmount: Value(draft.health!.stepsAmount),
             cyclePhase: Value(draft.health!.cyclePhase),
@@ -448,6 +457,11 @@ class LocalRepositoryImpl implements LocalRepository {
   @override
   Future<void> updateFullEntry(int entryId, MoodEntryDraft draft) async {
     await db.transaction(() async {
+      final entry = await (db.select(db.moodEntries)
+            ..where((e) => e.id.equals(entryId)))
+          .getSingle();
+      final healthDate = _normalizeDay(entry.createdAt);
+
       // 1. Update mood
       await (db.update(db.moodEntries)..where((e) => e.id.equals(entryId)))
           .write(MoodEntriesCompanion(moodId: Value(draft.moodId)));
@@ -456,27 +470,35 @@ class LocalRepositoryImpl implements LocalRepository {
       final existing = await (db.select(db.contextDetails)
             ..where((c) => c.moodEntryId.equals(entryId)))
           .getSingleOrNull();
-      final contextCompanion = ContextDetailsCompanion(
-        note: Value(draft.note.isEmpty ? null : draft.note),
-        voicePath:
-            Value(draft.recordPath.isEmpty ? null : draft.recordPath),
-        photoPath: Value(
-          draft.imagePaths.isNotEmpty
-              ? jsonEncode(draft.imagePaths)
-              : null,
-        ),
-      );
-      if (existing != null) {
+      final note = draft.note.trim().isEmpty ? null : draft.note;
+      final voicePath = draft.recordPath.isEmpty ? null : draft.recordPath;
+      final photoPath =
+          draft.imagePaths.isNotEmpty ? jsonEncode(draft.imagePaths) : null;
+      final hasContextPayload =
+          note != null || voicePath != null || photoPath != null;
+      if (!hasContextPayload) {
+        if (existing != null) {
+          await (db.delete(db.contextDetails)
+                ..where((c) => c.moodEntryId.equals(entryId)))
+              .go();
+        }
+      } else if (existing != null) {
         await (db.update(db.contextDetails)
               ..where((c) => c.moodEntryId.equals(entryId)))
-            .write(contextCompanion);
+            .write(
+          ContextDetailsCompanion(
+            note: Value(note),
+            voicePath: Value(voicePath),
+            photoPath: Value(photoPath),
+          ),
+        );
       } else {
         await db.into(db.contextDetails).insert(
           ContextDetailsCompanion.insert(
             moodEntryId: entryId,
-            note: contextCompanion.note,
-            voicePath: contextCompanion.voicePath,
-            photoPath: contextCompanion.photoPath,
+            note: Value(note),
+            voicePath: Value(voicePath),
+            photoPath: Value(photoPath),
           ),
         );
       }
@@ -514,10 +536,10 @@ class LocalRepositoryImpl implements LocalRepository {
       }
 
       // 5. Health — upsert
-      if (draft.health != null) {
+      if (_hasHealthPayload(draft.health)) {
         await db.into(db.healthData).insert(
           HealthDataCompanion.insert(
-            date: draft.health!.date,
+            date: healthDate,
             sleepMinutes: Value(draft.health!.sleepMinutes),
             stepsAmount: Value(draft.health!.stepsAmount),
             cyclePhase: Value(draft.health!.cyclePhase),
@@ -525,6 +547,10 @@ class LocalRepositoryImpl implements LocalRepository {
           ),
           mode: InsertMode.insertOrReplace,
         );
+      } else {
+        await (db.delete(db.healthData)
+              ..where((h) => h.date.equals(healthDate)))
+            .go();
       }
     });
   }

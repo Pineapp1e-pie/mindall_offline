@@ -63,6 +63,15 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
         target.day == now.day;
   }
 
+  bool get _shouldQueueHealthDeletion {
+    final health = _draft.health;
+    return _draft.editingEntryId != null &&
+        (health == null ||
+            (health.sleepMinutes == null &&
+                health.stepsAmount == null &&
+                health.cyclePhase == null));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -323,6 +332,7 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
 
     try {
       final entryDate = _draft.entryDate ?? DateTime.now();
+      final shouldQueueHealthDeletion = _shouldQueueHealthDeletion;
 
       if (_draft.editingEntryId != null) {
         await _repository.updateFullEntry(_draft.editingEntryId!, _draft);
@@ -354,6 +364,10 @@ class _HealthStepScreenState extends State<HealthStepScreen> {
 
       final crisisLevel = await _getCrisisLevel(entryDate);
       final syncSvc = context.read<SupabaseSyncService>();
+
+      if (shouldQueueHealthDeletion) {
+        await syncSvc.queueHealthDeletion(entryDate);
+      }
 
       if (!mounted) return;
 

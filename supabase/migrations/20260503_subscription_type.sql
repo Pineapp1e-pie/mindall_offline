@@ -1,0 +1,3 @@
+--alter table public.profiles
+--add column if not exists subscription_type text not null default 'free'
+--check (subscription_type in ('free', 'premium'));
