@@ -53,6 +53,7 @@ class _ManualHealthScreenState extends State<ManualHealthScreen> {
         type: ContextTagType.activity,
         isCustom: false,
         isActive: false,
+        updatedAt: DateTime.now(),
       );
     }).toList();
 

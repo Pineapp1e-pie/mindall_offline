@@ -17,4 +17,7 @@ class HealthData extends Table {
       textEnum<CyclePhase>().nullable()();
 
   TextColumn get source => text().nullable()();
+
+  DateTimeColumn get updatedAt =>
+      dateTime().withDefault(currentDateAndTime)();
 }

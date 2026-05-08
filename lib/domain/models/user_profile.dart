@@ -24,7 +24,7 @@ class UserProfile {
     required this.gender,
     this.username,
     this.cycleSettings,
-    this.subscriptionType = SubscriptionType.free,
+    this.subscriptionType = SubscriptionType.premium,
   });
 
   bool get isFemale => gender == Gender.female;

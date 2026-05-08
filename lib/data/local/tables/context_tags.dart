@@ -24,4 +24,7 @@ class ContextTags extends Table {
   BoolColumn get isActive =>
       boolean().withDefault(const Constant(true))();
 
+  DateTimeColumn get updatedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
 }

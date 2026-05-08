@@ -48,5 +48,7 @@ class WeatherData extends Table {
   IntColumn get cloudiness =>
       intEnum<Cloudiness>().nullable()();
 
+  DateTimeColumn get updatedAt =>
+      dateTime().withDefault(currentDateAndTime)();
 
 }

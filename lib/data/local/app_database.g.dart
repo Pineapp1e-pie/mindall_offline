@@ -327,8 +327,17 @@ class $MoodEntriesTable extends MoodEntries
       type: DriftSqlType.dateTime,
       requiredDuringInsert: false,
       defaultValue: currentDateAndTime);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
   @override
-  List<GeneratedColumn> get $columns => [id, userId, moodId, createdAt];
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, userId, moodId, createdAt, updatedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -358,6 +367,10 @@ class $MoodEntriesTable extends MoodEntries
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
     }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    }
     return context;
   }
 
@@ -375,6 +388,8 @@ class $MoodEntriesTable extends MoodEntries
           .read(DriftSqlType.int, data['${effectivePrefix}mood_id'])!,
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
     );
   }
 
@@ -389,11 +404,13 @@ class MoodEntry extends DataClass implements Insertable<MoodEntry> {
   final String userId;
   final int moodId;
   final DateTime createdAt;
+  final DateTime updatedAt;
   const MoodEntry(
       {required this.id,
       required this.userId,
       required this.moodId,
-      required this.createdAt});
+      required this.createdAt,
+      required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -401,6 +418,7 @@ class MoodEntry extends DataClass implements Insertable<MoodEntry> {
     map['user_id'] = Variable<String>(userId);
     map['mood_id'] = Variable<int>(moodId);
     map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
 
@@ -410,6 +428,7 @@ class MoodEntry extends DataClass implements Insertable<MoodEntry> {
       userId: Value(userId),
       moodId: Value(moodId),
       createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
     );
   }
 
@@ -421,6 +440,7 @@ class MoodEntry extends DataClass implements Insertable<MoodEntry> {
       userId: serializer.fromJson<String>(json['userId']),
       moodId: serializer.fromJson<int>(json['moodId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
   @override
@@ -431,16 +451,22 @@ class MoodEntry extends DataClass implements Insertable<MoodEntry> {
       'userId': serializer.toJson<String>(userId),
       'moodId': serializer.toJson<int>(moodId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
 
   MoodEntry copyWith(
-          {int? id, String? userId, int? moodId, DateTime? createdAt}) =>
+          {int? id,
+          String? userId,
+          int? moodId,
+          DateTime? createdAt,
+          DateTime? updatedAt}) =>
       MoodEntry(
         id: id ?? this.id,
         userId: userId ?? this.userId,
         moodId: moodId ?? this.moodId,
         createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
       );
   @override
   String toString() {
@@ -448,13 +474,14 @@ class MoodEntry extends DataClass implements Insertable<MoodEntry> {
           ..write('id: $id, ')
           ..write('userId: $userId, ')
           ..write('moodId: $moodId, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, userId, moodId, createdAt);
+  int get hashCode => Object.hash(id, userId, moodId, createdAt, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -462,7 +489,8 @@ class MoodEntry extends DataClass implements Insertable<MoodEntry> {
           other.id == this.id &&
           other.userId == this.userId &&
           other.moodId == this.moodId &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
 }
 
 class MoodEntriesCompanion extends UpdateCompanion<MoodEntry> {
@@ -470,17 +498,20 @@ class MoodEntriesCompanion extends UpdateCompanion<MoodEntry> {
   final Value<String> userId;
   final Value<int> moodId;
   final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
   const MoodEntriesCompanion({
     this.id = const Value.absent(),
     this.userId = const Value.absent(),
     this.moodId = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   });
   MoodEntriesCompanion.insert({
     this.id = const Value.absent(),
     required String userId,
     required int moodId,
     this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   })  : userId = Value(userId),
         moodId = Value(moodId);
   static Insertable<MoodEntry> custom({
@@ -488,12 +519,14 @@ class MoodEntriesCompanion extends UpdateCompanion<MoodEntry> {
     Expression<String>? userId,
     Expression<int>? moodId,
     Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (userId != null) 'user_id': userId,
       if (moodId != null) 'mood_id': moodId,
       if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
     });
   }
 
@@ -501,12 +534,14 @@ class MoodEntriesCompanion extends UpdateCompanion<MoodEntry> {
       {Value<int>? id,
       Value<String>? userId,
       Value<int>? moodId,
-      Value<DateTime>? createdAt}) {
+      Value<DateTime>? createdAt,
+      Value<DateTime>? updatedAt}) {
     return MoodEntriesCompanion(
       id: id ?? this.id,
       userId: userId ?? this.userId,
       moodId: moodId ?? this.moodId,
       createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -525,6 +560,9 @@ class MoodEntriesCompanion extends UpdateCompanion<MoodEntry> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
     return map;
   }
 
@@ -534,7 +572,8 @@ class MoodEntriesCompanion extends UpdateCompanion<MoodEntry> {
           ..write('id: $id, ')
           ..write('userId: $userId, ')
           ..write('moodId: $moodId, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
@@ -586,8 +625,17 @@ class $ContextTagsTable extends ContextTags
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('CHECK ("is_active" IN (0, 1))'),
       defaultValue: const Constant(true));
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
   @override
-  List<GeneratedColumn> get $columns => [id, name, type, isCustom, isActive];
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, name, type, isCustom, isActive, updatedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -616,6 +664,10 @@ class $ContextTagsTable extends ContextTags
       context.handle(_isActiveMeta,
           isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta));
     }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    }
     return context;
   }
 
@@ -636,6 +688,8 @@ class $ContextTagsTable extends ContextTags
           .read(DriftSqlType.bool, data['${effectivePrefix}is_custom'])!,
       isActive: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}is_active'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
     );
   }
 
@@ -654,12 +708,14 @@ class ContextTag extends DataClass implements Insertable<ContextTag> {
   final ContextTagType type;
   final bool isCustom;
   final bool isActive;
+  final DateTime updatedAt;
   const ContextTag(
       {required this.id,
       required this.name,
       required this.type,
       required this.isCustom,
-      required this.isActive});
+      required this.isActive,
+      required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -671,6 +727,7 @@ class ContextTag extends DataClass implements Insertable<ContextTag> {
     }
     map['is_custom'] = Variable<bool>(isCustom);
     map['is_active'] = Variable<bool>(isActive);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
 
@@ -681,6 +738,7 @@ class ContextTag extends DataClass implements Insertable<ContextTag> {
       type: Value(type),
       isCustom: Value(isCustom),
       isActive: Value(isActive),
+      updatedAt: Value(updatedAt),
     );
   }
 
@@ -694,6 +752,7 @@ class ContextTag extends DataClass implements Insertable<ContextTag> {
           .fromJson(serializer.fromJson<String>(json['type'])),
       isCustom: serializer.fromJson<bool>(json['isCustom']),
       isActive: serializer.fromJson<bool>(json['isActive']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
   @override
@@ -706,6 +765,7 @@ class ContextTag extends DataClass implements Insertable<ContextTag> {
           .toJson<String>($ContextTagsTable.$convertertype.toJson(type)),
       'isCustom': serializer.toJson<bool>(isCustom),
       'isActive': serializer.toJson<bool>(isActive),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
 
@@ -714,13 +774,15 @@ class ContextTag extends DataClass implements Insertable<ContextTag> {
           String? name,
           ContextTagType? type,
           bool? isCustom,
-          bool? isActive}) =>
+          bool? isActive,
+          DateTime? updatedAt}) =>
       ContextTag(
         id: id ?? this.id,
         name: name ?? this.name,
         type: type ?? this.type,
         isCustom: isCustom ?? this.isCustom,
         isActive: isActive ?? this.isActive,
+        updatedAt: updatedAt ?? this.updatedAt,
       );
   @override
   String toString() {
@@ -729,13 +791,15 @@ class ContextTag extends DataClass implements Insertable<ContextTag> {
           ..write('name: $name, ')
           ..write('type: $type, ')
           ..write('isCustom: $isCustom, ')
-          ..write('isActive: $isActive')
+          ..write('isActive: $isActive, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, type, isCustom, isActive);
+  int get hashCode =>
+      Object.hash(id, name, type, isCustom, isActive, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -744,7 +808,8 @@ class ContextTag extends DataClass implements Insertable<ContextTag> {
           other.name == this.name &&
           other.type == this.type &&
           other.isCustom == this.isCustom &&
-          other.isActive == this.isActive);
+          other.isActive == this.isActive &&
+          other.updatedAt == this.updatedAt);
 }
 
 class ContextTagsCompanion extends UpdateCompanion<ContextTag> {
@@ -753,12 +818,14 @@ class ContextTagsCompanion extends UpdateCompanion<ContextTag> {
   final Value<ContextTagType> type;
   final Value<bool> isCustom;
   final Value<bool> isActive;
+  final Value<DateTime> updatedAt;
   const ContextTagsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.type = const Value.absent(),
     this.isCustom = const Value.absent(),
     this.isActive = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   });
   ContextTagsCompanion.insert({
     this.id = const Value.absent(),
@@ -766,6 +833,7 @@ class ContextTagsCompanion extends UpdateCompanion<ContextTag> {
     required ContextTagType type,
     this.isCustom = const Value.absent(),
     this.isActive = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   })  : name = Value(name),
         type = Value(type);
   static Insertable<ContextTag> custom({
@@ -774,6 +842,7 @@ class ContextTagsCompanion extends UpdateCompanion<ContextTag> {
     Expression<String>? type,
     Expression<bool>? isCustom,
     Expression<bool>? isActive,
+    Expression<DateTime>? updatedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -781,6 +850,7 @@ class ContextTagsCompanion extends UpdateCompanion<ContextTag> {
       if (type != null) 'type': type,
       if (isCustom != null) 'is_custom': isCustom,
       if (isActive != null) 'is_active': isActive,
+      if (updatedAt != null) 'updated_at': updatedAt,
     });
   }
 
@@ -789,13 +859,15 @@ class ContextTagsCompanion extends UpdateCompanion<ContextTag> {
       Value<String>? name,
       Value<ContextTagType>? type,
       Value<bool>? isCustom,
-      Value<bool>? isActive}) {
+      Value<bool>? isActive,
+      Value<DateTime>? updatedAt}) {
     return ContextTagsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
       type: type ?? this.type,
       isCustom: isCustom ?? this.isCustom,
       isActive: isActive ?? this.isActive,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -818,6 +890,9 @@ class ContextTagsCompanion extends UpdateCompanion<ContextTag> {
     if (isActive.present) {
       map['is_active'] = Variable<bool>(isActive.value);
     }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
     return map;
   }
 
@@ -828,7 +903,8 @@ class ContextTagsCompanion extends UpdateCompanion<ContextTag> {
           ..write('name: $name, ')
           ..write('type: $type, ')
           ..write('isCustom: $isCustom, ')
-          ..write('isActive: $isActive')
+          ..write('isActive: $isActive, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
@@ -857,8 +933,16 @@ class $MoodEntryTagsTable extends MoodEntryTags
       requiredDuringInsert: true,
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('REFERENCES context_tags (id)'));
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
   @override
-  List<GeneratedColumn> get $columns => [moodEntryId, tagId];
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns => [moodEntryId, tagId, updatedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -883,6 +967,10 @@ class $MoodEntryTagsTable extends MoodEntryTags
     } else if (isInserting) {
       context.missing(_tagIdMeta);
     }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    }
     return context;
   }
 
@@ -896,6 +984,8 @@ class $MoodEntryTagsTable extends MoodEntryTags
           .read(DriftSqlType.int, data['${effectivePrefix}mood_entry_id'])!,
       tagId: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}tag_id'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
     );
   }
 
@@ -908,12 +998,17 @@ class $MoodEntryTagsTable extends MoodEntryTags
 class MoodEntryTag extends DataClass implements Insertable<MoodEntryTag> {
   final int moodEntryId;
   final int tagId;
-  const MoodEntryTag({required this.moodEntryId, required this.tagId});
+  final DateTime updatedAt;
+  const MoodEntryTag(
+      {required this.moodEntryId,
+      required this.tagId,
+      required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['mood_entry_id'] = Variable<int>(moodEntryId);
     map['tag_id'] = Variable<int>(tagId);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
 
@@ -921,6 +1016,7 @@ class MoodEntryTag extends DataClass implements Insertable<MoodEntryTag> {
     return MoodEntryTagsCompanion(
       moodEntryId: Value(moodEntryId),
       tagId: Value(tagId),
+      updatedAt: Value(updatedAt),
     );
   }
 
@@ -930,6 +1026,7 @@ class MoodEntryTag extends DataClass implements Insertable<MoodEntryTag> {
     return MoodEntryTag(
       moodEntryId: serializer.fromJson<int>(json['moodEntryId']),
       tagId: serializer.fromJson<int>(json['tagId']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
   @override
@@ -938,64 +1035,78 @@ class MoodEntryTag extends DataClass implements Insertable<MoodEntryTag> {
     return <String, dynamic>{
       'moodEntryId': serializer.toJson<int>(moodEntryId),
       'tagId': serializer.toJson<int>(tagId),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
 
-  MoodEntryTag copyWith({int? moodEntryId, int? tagId}) => MoodEntryTag(
+  MoodEntryTag copyWith({int? moodEntryId, int? tagId, DateTime? updatedAt}) =>
+      MoodEntryTag(
         moodEntryId: moodEntryId ?? this.moodEntryId,
         tagId: tagId ?? this.tagId,
+        updatedAt: updatedAt ?? this.updatedAt,
       );
   @override
   String toString() {
     return (StringBuffer('MoodEntryTag(')
           ..write('moodEntryId: $moodEntryId, ')
-          ..write('tagId: $tagId')
+          ..write('tagId: $tagId, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(moodEntryId, tagId);
+  int get hashCode => Object.hash(moodEntryId, tagId, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is MoodEntryTag &&
           other.moodEntryId == this.moodEntryId &&
-          other.tagId == this.tagId);
+          other.tagId == this.tagId &&
+          other.updatedAt == this.updatedAt);
 }
 
 class MoodEntryTagsCompanion extends UpdateCompanion<MoodEntryTag> {
   final Value<int> moodEntryId;
   final Value<int> tagId;
+  final Value<DateTime> updatedAt;
   final Value<int> rowid;
   const MoodEntryTagsCompanion({
     this.moodEntryId = const Value.absent(),
     this.tagId = const Value.absent(),
+    this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   MoodEntryTagsCompanion.insert({
     required int moodEntryId,
     required int tagId,
+    this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : moodEntryId = Value(moodEntryId),
         tagId = Value(tagId);
   static Insertable<MoodEntryTag> custom({
     Expression<int>? moodEntryId,
     Expression<int>? tagId,
+    Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (moodEntryId != null) 'mood_entry_id': moodEntryId,
       if (tagId != null) 'tag_id': tagId,
+      if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
 
   MoodEntryTagsCompanion copyWith(
-      {Value<int>? moodEntryId, Value<int>? tagId, Value<int>? rowid}) {
+      {Value<int>? moodEntryId,
+      Value<int>? tagId,
+      Value<DateTime>? updatedAt,
+      Value<int>? rowid}) {
     return MoodEntryTagsCompanion(
       moodEntryId: moodEntryId ?? this.moodEntryId,
       tagId: tagId ?? this.tagId,
+      updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1009,6 +1120,9 @@ class MoodEntryTagsCompanion extends UpdateCompanion<MoodEntryTag> {
     if (tagId.present) {
       map['tag_id'] = Variable<int>(tagId.value);
     }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1020,6 +1134,7 @@ class MoodEntryTagsCompanion extends UpdateCompanion<MoodEntryTag> {
     return (StringBuffer('MoodEntryTagsCompanion(')
           ..write('moodEntryId: $moodEntryId, ')
           ..write('tagId: $tagId, ')
+          ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1067,9 +1182,17 @@ class $ContextDetailsTable extends ContextDetails
   late final GeneratedColumn<String> photoPath = GeneratedColumn<String>(
       'photo_path', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
   @override
   List<GeneratedColumn> get $columns =>
-      [id, moodEntryId, note, voicePath, photoPath];
+      [id, moodEntryId, note, voicePath, photoPath, updatedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1103,6 +1226,10 @@ class $ContextDetailsTable extends ContextDetails
       context.handle(_photoPathMeta,
           photoPath.isAcceptableOrUnknown(data['photo_path']!, _photoPathMeta));
     }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    }
     return context;
   }
 
@@ -1122,6 +1249,8 @@ class $ContextDetailsTable extends ContextDetails
           .read(DriftSqlType.string, data['${effectivePrefix}voice_path']),
       photoPath: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}photo_path']),
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
     );
   }
 
@@ -1137,12 +1266,14 @@ class ContextDetail extends DataClass implements Insertable<ContextDetail> {
   final String? note;
   final String? voicePath;
   final String? photoPath;
+  final DateTime updatedAt;
   const ContextDetail(
       {required this.id,
       required this.moodEntryId,
       this.note,
       this.voicePath,
-      this.photoPath});
+      this.photoPath,
+      required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -1157,6 +1288,7 @@ class ContextDetail extends DataClass implements Insertable<ContextDetail> {
     if (!nullToAbsent || photoPath != null) {
       map['photo_path'] = Variable<String>(photoPath);
     }
+    map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
 
@@ -1171,6 +1303,7 @@ class ContextDetail extends DataClass implements Insertable<ContextDetail> {
       photoPath: photoPath == null && nullToAbsent
           ? const Value.absent()
           : Value(photoPath),
+      updatedAt: Value(updatedAt),
     );
   }
 
@@ -1183,6 +1316,7 @@ class ContextDetail extends DataClass implements Insertable<ContextDetail> {
       note: serializer.fromJson<String?>(json['note']),
       voicePath: serializer.fromJson<String?>(json['voicePath']),
       photoPath: serializer.fromJson<String?>(json['photoPath']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
   @override
@@ -1194,6 +1328,7 @@ class ContextDetail extends DataClass implements Insertable<ContextDetail> {
       'note': serializer.toJson<String?>(note),
       'voicePath': serializer.toJson<String?>(voicePath),
       'photoPath': serializer.toJson<String?>(photoPath),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
 
@@ -1202,13 +1337,15 @@ class ContextDetail extends DataClass implements Insertable<ContextDetail> {
           int? moodEntryId,
           Value<String?> note = const Value.absent(),
           Value<String?> voicePath = const Value.absent(),
-          Value<String?> photoPath = const Value.absent()}) =>
+          Value<String?> photoPath = const Value.absent(),
+          DateTime? updatedAt}) =>
       ContextDetail(
         id: id ?? this.id,
         moodEntryId: moodEntryId ?? this.moodEntryId,
         note: note.present ? note.value : this.note,
         voicePath: voicePath.present ? voicePath.value : this.voicePath,
         photoPath: photoPath.present ? photoPath.value : this.photoPath,
+        updatedAt: updatedAt ?? this.updatedAt,
       );
   @override
   String toString() {
@@ -1217,13 +1354,15 @@ class ContextDetail extends DataClass implements Insertable<ContextDetail> {
           ..write('moodEntryId: $moodEntryId, ')
           ..write('note: $note, ')
           ..write('voicePath: $voicePath, ')
-          ..write('photoPath: $photoPath')
+          ..write('photoPath: $photoPath, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, moodEntryId, note, voicePath, photoPath);
+  int get hashCode =>
+      Object.hash(id, moodEntryId, note, voicePath, photoPath, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1232,7 +1371,8 @@ class ContextDetail extends DataClass implements Insertable<ContextDetail> {
           other.moodEntryId == this.moodEntryId &&
           other.note == this.note &&
           other.voicePath == this.voicePath &&
-          other.photoPath == this.photoPath);
+          other.photoPath == this.photoPath &&
+          other.updatedAt == this.updatedAt);
 }
 
 class ContextDetailsCompanion extends UpdateCompanion<ContextDetail> {
@@ -1241,12 +1381,14 @@ class ContextDetailsCompanion extends UpdateCompanion<ContextDetail> {
   final Value<String?> note;
   final Value<String?> voicePath;
   final Value<String?> photoPath;
+  final Value<DateTime> updatedAt;
   const ContextDetailsCompanion({
     this.id = const Value.absent(),
     this.moodEntryId = const Value.absent(),
     this.note = const Value.absent(),
     this.voicePath = const Value.absent(),
     this.photoPath = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   });
   ContextDetailsCompanion.insert({
     this.id = const Value.absent(),
@@ -1254,6 +1396,7 @@ class ContextDetailsCompanion extends UpdateCompanion<ContextDetail> {
     this.note = const Value.absent(),
     this.voicePath = const Value.absent(),
     this.photoPath = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   }) : moodEntryId = Value(moodEntryId);
   static Insertable<ContextDetail> custom({
     Expression<int>? id,
@@ -1261,6 +1404,7 @@ class ContextDetailsCompanion extends UpdateCompanion<ContextDetail> {
     Expression<String>? note,
     Expression<String>? voicePath,
     Expression<String>? photoPath,
+    Expression<DateTime>? updatedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1268,6 +1412,7 @@ class ContextDetailsCompanion extends UpdateCompanion<ContextDetail> {
       if (note != null) 'note': note,
       if (voicePath != null) 'voice_path': voicePath,
       if (photoPath != null) 'photo_path': photoPath,
+      if (updatedAt != null) 'updated_at': updatedAt,
     });
   }
 
@@ -1276,13 +1421,15 @@ class ContextDetailsCompanion extends UpdateCompanion<ContextDetail> {
       Value<int>? moodEntryId,
       Value<String?>? note,
       Value<String?>? voicePath,
-      Value<String?>? photoPath}) {
+      Value<String?>? photoPath,
+      Value<DateTime>? updatedAt}) {
     return ContextDetailsCompanion(
       id: id ?? this.id,
       moodEntryId: moodEntryId ?? this.moodEntryId,
       note: note ?? this.note,
       voicePath: voicePath ?? this.voicePath,
       photoPath: photoPath ?? this.photoPath,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -1304,6 +1451,9 @@ class ContextDetailsCompanion extends UpdateCompanion<ContextDetail> {
     if (photoPath.present) {
       map['photo_path'] = Variable<String>(photoPath.value);
     }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
     return map;
   }
 
@@ -1314,7 +1464,8 @@ class ContextDetailsCompanion extends UpdateCompanion<ContextDetail> {
           ..write('moodEntryId: $moodEntryId, ')
           ..write('note: $note, ')
           ..write('voicePath: $voicePath, ')
-          ..write('photoPath: $photoPath')
+          ..write('photoPath: $photoPath, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
@@ -1379,6 +1530,14 @@ class $WeatherDataTable extends WeatherData
       GeneratedColumn<int>('cloudiness', aliasedName, true,
               type: DriftSqlType.int, requiredDuringInsert: false)
           .withConverter<Cloudiness?>($WeatherDataTable.$convertercloudinessn);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -1387,7 +1546,8 @@ class $WeatherDataTable extends WeatherData
         temperatureCategory,
         rawTemperature,
         precipitation,
-        cloudiness
+        cloudiness,
+        updatedAt
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1426,6 +1586,10 @@ class $WeatherDataTable extends WeatherData
     }
     context.handle(_precipitationMeta, const VerificationResult.success());
     context.handle(_cloudinessMeta, const VerificationResult.success());
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    }
     return context;
   }
 
@@ -1452,6 +1616,8 @@ class $WeatherDataTable extends WeatherData
       cloudiness: $WeatherDataTable.$convertercloudinessn.fromSql(
           attachedDatabase.typeMapping
               .read(DriftSqlType.int, data['${effectivePrefix}cloudiness'])),
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
     );
   }
 
@@ -1487,6 +1653,7 @@ class WeatherDataData extends DataClass implements Insertable<WeatherDataData> {
   final double? rawTemperature;
   final PrecipitationType? precipitation;
   final Cloudiness? cloudiness;
+  final DateTime updatedAt;
   const WeatherDataData(
       {required this.id,
       required this.moodEntryId,
@@ -1494,7 +1661,8 @@ class WeatherDataData extends DataClass implements Insertable<WeatherDataData> {
       required this.temperatureCategory,
       this.rawTemperature,
       this.precipitation,
-      this.cloudiness});
+      this.cloudiness,
+      required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -1517,6 +1685,7 @@ class WeatherDataData extends DataClass implements Insertable<WeatherDataData> {
       map['cloudiness'] = Variable<int>(
           $WeatherDataTable.$convertercloudinessn.toSql(cloudiness));
     }
+    map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
 
@@ -1535,6 +1704,7 @@ class WeatherDataData extends DataClass implements Insertable<WeatherDataData> {
       cloudiness: cloudiness == null && nullToAbsent
           ? const Value.absent()
           : Value(cloudiness),
+      updatedAt: Value(updatedAt),
     );
   }
 
@@ -1552,6 +1722,7 @@ class WeatherDataData extends DataClass implements Insertable<WeatherDataData> {
           .fromJson(serializer.fromJson<int?>(json['precipitation'])),
       cloudiness: $WeatherDataTable.$convertercloudinessn
           .fromJson(serializer.fromJson<int?>(json['cloudiness'])),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
   @override
@@ -1569,6 +1740,7 @@ class WeatherDataData extends DataClass implements Insertable<WeatherDataData> {
           $WeatherDataTable.$converterprecipitationn.toJson(precipitation)),
       'cloudiness': serializer.toJson<int?>(
           $WeatherDataTable.$convertercloudinessn.toJson(cloudiness)),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
 
@@ -1579,7 +1751,8 @@ class WeatherDataData extends DataClass implements Insertable<WeatherDataData> {
           TemperatureCategory? temperatureCategory,
           Value<double?> rawTemperature = const Value.absent(),
           Value<PrecipitationType?> precipitation = const Value.absent(),
-          Value<Cloudiness?> cloudiness = const Value.absent()}) =>
+          Value<Cloudiness?> cloudiness = const Value.absent(),
+          DateTime? updatedAt}) =>
       WeatherDataData(
         id: id ?? this.id,
         moodEntryId: moodEntryId ?? this.moodEntryId,
@@ -1590,6 +1763,7 @@ class WeatherDataData extends DataClass implements Insertable<WeatherDataData> {
         precipitation:
             precipitation.present ? precipitation.value : this.precipitation,
         cloudiness: cloudiness.present ? cloudiness.value : this.cloudiness,
+        updatedAt: updatedAt ?? this.updatedAt,
       );
   @override
   String toString() {
@@ -1600,14 +1774,15 @@ class WeatherDataData extends DataClass implements Insertable<WeatherDataData> {
           ..write('temperatureCategory: $temperatureCategory, ')
           ..write('rawTemperature: $rawTemperature, ')
           ..write('precipitation: $precipitation, ')
-          ..write('cloudiness: $cloudiness')
+          ..write('cloudiness: $cloudiness, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode => Object.hash(id, moodEntryId, source, temperatureCategory,
-      rawTemperature, precipitation, cloudiness);
+      rawTemperature, precipitation, cloudiness, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1618,7 +1793,8 @@ class WeatherDataData extends DataClass implements Insertable<WeatherDataData> {
           other.temperatureCategory == this.temperatureCategory &&
           other.rawTemperature == this.rawTemperature &&
           other.precipitation == this.precipitation &&
-          other.cloudiness == this.cloudiness);
+          other.cloudiness == this.cloudiness &&
+          other.updatedAt == this.updatedAt);
 }
 
 class WeatherDataCompanion extends UpdateCompanion<WeatherDataData> {
@@ -1629,6 +1805,7 @@ class WeatherDataCompanion extends UpdateCompanion<WeatherDataData> {
   final Value<double?> rawTemperature;
   final Value<PrecipitationType?> precipitation;
   final Value<Cloudiness?> cloudiness;
+  final Value<DateTime> updatedAt;
   const WeatherDataCompanion({
     this.id = const Value.absent(),
     this.moodEntryId = const Value.absent(),
@@ -1637,6 +1814,7 @@ class WeatherDataCompanion extends UpdateCompanion<WeatherDataData> {
     this.rawTemperature = const Value.absent(),
     this.precipitation = const Value.absent(),
     this.cloudiness = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   });
   WeatherDataCompanion.insert({
     this.id = const Value.absent(),
@@ -1646,6 +1824,7 @@ class WeatherDataCompanion extends UpdateCompanion<WeatherDataData> {
     this.rawTemperature = const Value.absent(),
     this.precipitation = const Value.absent(),
     this.cloudiness = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   })  : moodEntryId = Value(moodEntryId),
         source = Value(source),
         temperatureCategory = Value(temperatureCategory);
@@ -1657,6 +1836,7 @@ class WeatherDataCompanion extends UpdateCompanion<WeatherDataData> {
     Expression<double>? rawTemperature,
     Expression<int>? precipitation,
     Expression<int>? cloudiness,
+    Expression<DateTime>? updatedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1667,6 +1847,7 @@ class WeatherDataCompanion extends UpdateCompanion<WeatherDataData> {
       if (rawTemperature != null) 'raw_temperature': rawTemperature,
       if (precipitation != null) 'precipitation': precipitation,
       if (cloudiness != null) 'cloudiness': cloudiness,
+      if (updatedAt != null) 'updated_at': updatedAt,
     });
   }
 
@@ -1677,7 +1858,8 @@ class WeatherDataCompanion extends UpdateCompanion<WeatherDataData> {
       Value<TemperatureCategory>? temperatureCategory,
       Value<double?>? rawTemperature,
       Value<PrecipitationType?>? precipitation,
-      Value<Cloudiness?>? cloudiness}) {
+      Value<Cloudiness?>? cloudiness,
+      Value<DateTime>? updatedAt}) {
     return WeatherDataCompanion(
       id: id ?? this.id,
       moodEntryId: moodEntryId ?? this.moodEntryId,
@@ -1686,6 +1868,7 @@ class WeatherDataCompanion extends UpdateCompanion<WeatherDataData> {
       rawTemperature: rawTemperature ?? this.rawTemperature,
       precipitation: precipitation ?? this.precipitation,
       cloudiness: cloudiness ?? this.cloudiness,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -1718,6 +1901,9 @@ class WeatherDataCompanion extends UpdateCompanion<WeatherDataData> {
       map['cloudiness'] = Variable<int>(
           $WeatherDataTable.$convertercloudinessn.toSql(cloudiness.value));
     }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
     return map;
   }
 
@@ -1730,7 +1916,8 @@ class WeatherDataCompanion extends UpdateCompanion<WeatherDataData> {
           ..write('temperatureCategory: $temperatureCategory, ')
           ..write('rawTemperature: $rawTemperature, ')
           ..write('precipitation: $precipitation, ')
-          ..write('cloudiness: $cloudiness')
+          ..write('cloudiness: $cloudiness, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
@@ -1782,9 +1969,17 @@ class $HealthDataTable extends HealthData
   late final GeneratedColumn<String> source = GeneratedColumn<String>(
       'source', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
   @override
   List<GeneratedColumn> get $columns =>
-      [id, date, sleepMinutes, stepsAmount, cyclePhase, source];
+      [id, date, sleepMinutes, stepsAmount, cyclePhase, source, updatedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1821,6 +2016,10 @@ class $HealthDataTable extends HealthData
       context.handle(_sourceMeta,
           source.isAcceptableOrUnknown(data['source']!, _sourceMeta));
     }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    }
     return context;
   }
 
@@ -1843,6 +2042,8 @@ class $HealthDataTable extends HealthData
               DriftSqlType.string, data['${effectivePrefix}cycle_phase'])),
       source: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}source']),
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
     );
   }
 
@@ -1865,13 +2066,15 @@ class HealthDataData extends DataClass implements Insertable<HealthDataData> {
   final int? stepsAmount;
   final CyclePhase? cyclePhase;
   final String? source;
+  final DateTime updatedAt;
   const HealthDataData(
       {required this.id,
       required this.date,
       this.sleepMinutes,
       this.stepsAmount,
       this.cyclePhase,
-      this.source});
+      this.source,
+      required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -1890,6 +2093,7 @@ class HealthDataData extends DataClass implements Insertable<HealthDataData> {
     if (!nullToAbsent || source != null) {
       map['source'] = Variable<String>(source);
     }
+    map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
 
@@ -1908,6 +2112,7 @@ class HealthDataData extends DataClass implements Insertable<HealthDataData> {
           : Value(cyclePhase),
       source:
           source == null && nullToAbsent ? const Value.absent() : Value(source),
+      updatedAt: Value(updatedAt),
     );
   }
 
@@ -1922,6 +2127,7 @@ class HealthDataData extends DataClass implements Insertable<HealthDataData> {
       cyclePhase: $HealthDataTable.$convertercyclePhasen
           .fromJson(serializer.fromJson<String?>(json['cyclePhase'])),
       source: serializer.fromJson<String?>(json['source']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
   @override
@@ -1935,6 +2141,7 @@ class HealthDataData extends DataClass implements Insertable<HealthDataData> {
       'cyclePhase': serializer.toJson<String?>(
           $HealthDataTable.$convertercyclePhasen.toJson(cyclePhase)),
       'source': serializer.toJson<String?>(source),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
 
@@ -1944,7 +2151,8 @@ class HealthDataData extends DataClass implements Insertable<HealthDataData> {
           Value<int?> sleepMinutes = const Value.absent(),
           Value<int?> stepsAmount = const Value.absent(),
           Value<CyclePhase?> cyclePhase = const Value.absent(),
-          Value<String?> source = const Value.absent()}) =>
+          Value<String?> source = const Value.absent(),
+          DateTime? updatedAt}) =>
       HealthDataData(
         id: id ?? this.id,
         date: date ?? this.date,
@@ -1953,6 +2161,7 @@ class HealthDataData extends DataClass implements Insertable<HealthDataData> {
         stepsAmount: stepsAmount.present ? stepsAmount.value : this.stepsAmount,
         cyclePhase: cyclePhase.present ? cyclePhase.value : this.cyclePhase,
         source: source.present ? source.value : this.source,
+        updatedAt: updatedAt ?? this.updatedAt,
       );
   @override
   String toString() {
@@ -1962,14 +2171,15 @@ class HealthDataData extends DataClass implements Insertable<HealthDataData> {
           ..write('sleepMinutes: $sleepMinutes, ')
           ..write('stepsAmount: $stepsAmount, ')
           ..write('cyclePhase: $cyclePhase, ')
-          ..write('source: $source')
+          ..write('source: $source, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, date, sleepMinutes, stepsAmount, cyclePhase, source);
+  int get hashCode => Object.hash(
+      id, date, sleepMinutes, stepsAmount, cyclePhase, source, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1979,7 +2189,8 @@ class HealthDataData extends DataClass implements Insertable<HealthDataData> {
           other.sleepMinutes == this.sleepMinutes &&
           other.stepsAmount == this.stepsAmount &&
           other.cyclePhase == this.cyclePhase &&
-          other.source == this.source);
+          other.source == this.source &&
+          other.updatedAt == this.updatedAt);
 }
 
 class HealthDataCompanion extends UpdateCompanion<HealthDataData> {
@@ -1989,6 +2200,7 @@ class HealthDataCompanion extends UpdateCompanion<HealthDataData> {
   final Value<int?> stepsAmount;
   final Value<CyclePhase?> cyclePhase;
   final Value<String?> source;
+  final Value<DateTime> updatedAt;
   const HealthDataCompanion({
     this.id = const Value.absent(),
     this.date = const Value.absent(),
@@ -1996,6 +2208,7 @@ class HealthDataCompanion extends UpdateCompanion<HealthDataData> {
     this.stepsAmount = const Value.absent(),
     this.cyclePhase = const Value.absent(),
     this.source = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   });
   HealthDataCompanion.insert({
     this.id = const Value.absent(),
@@ -2004,6 +2217,7 @@ class HealthDataCompanion extends UpdateCompanion<HealthDataData> {
     this.stepsAmount = const Value.absent(),
     this.cyclePhase = const Value.absent(),
     this.source = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   }) : date = Value(date);
   static Insertable<HealthDataData> custom({
     Expression<int>? id,
@@ -2012,6 +2226,7 @@ class HealthDataCompanion extends UpdateCompanion<HealthDataData> {
     Expression<int>? stepsAmount,
     Expression<String>? cyclePhase,
     Expression<String>? source,
+    Expression<DateTime>? updatedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2020,6 +2235,7 @@ class HealthDataCompanion extends UpdateCompanion<HealthDataData> {
       if (stepsAmount != null) 'steps_amount': stepsAmount,
       if (cyclePhase != null) 'cycle_phase': cyclePhase,
       if (source != null) 'source': source,
+      if (updatedAt != null) 'updated_at': updatedAt,
     });
   }
 
@@ -2029,7 +2245,8 @@ class HealthDataCompanion extends UpdateCompanion<HealthDataData> {
       Value<int?>? sleepMinutes,
       Value<int?>? stepsAmount,
       Value<CyclePhase?>? cyclePhase,
-      Value<String?>? source}) {
+      Value<String?>? source,
+      Value<DateTime>? updatedAt}) {
     return HealthDataCompanion(
       id: id ?? this.id,
       date: date ?? this.date,
@@ -2037,6 +2254,7 @@ class HealthDataCompanion extends UpdateCompanion<HealthDataData> {
       stepsAmount: stepsAmount ?? this.stepsAmount,
       cyclePhase: cyclePhase ?? this.cyclePhase,
       source: source ?? this.source,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -2062,6 +2280,9 @@ class HealthDataCompanion extends UpdateCompanion<HealthDataData> {
     if (source.present) {
       map['source'] = Variable<String>(source.value);
     }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
     return map;
   }
 
@@ -2073,7 +2294,8 @@ class HealthDataCompanion extends UpdateCompanion<HealthDataData> {
           ..write('sleepMinutes: $sleepMinutes, ')
           ..write('stepsAmount: $stepsAmount, ')
           ..write('cyclePhase: $cyclePhase, ')
-          ..write('source: $source')
+          ..write('source: $source, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }

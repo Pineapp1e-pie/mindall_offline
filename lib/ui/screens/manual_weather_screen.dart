@@ -48,6 +48,7 @@ class _ManualWeatherScreenState extends State<ManualWeatherScreen> {
         type: ContextTagType.cloudiness,
         isCustom: false,
         isActive: false,
+        updatedAt: DateTime.now(),
       );
     }).toList();
 
@@ -85,6 +86,7 @@ class _ManualWeatherScreenState extends State<ManualWeatherScreen> {
         type: ContextTagType.temperature,
         isCustom: false,
         isActive: false,
+        updatedAt: DateTime.now(),
       );
     }).toList();
 
@@ -96,6 +98,7 @@ class _ManualWeatherScreenState extends State<ManualWeatherScreen> {
         type: ContextTagType.precipitation,
         isCustom: false,
         isActive: false,
+        updatedAt: DateTime.now(),
 
       );
     }).toList();

@@ -1,8 +1,11 @@
+
+
 import 'package:mindall/ui/app_route.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mindall/ui/screens/policy_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../domain/models/user_profile.dart';
@@ -10,9 +13,9 @@ import '../../domain/services/notification_service.dart';
 import '../../domain/services/user_profile_service.dart';
 import 'main_nav_scaffold.dart';
 
-const _accentGreen = Color(0xFF83F483); // Гармония
-const _accentYellow = Color(0xFFFFEB89); // Счастье
-const _accentPurple = Color(0xFF9B7BFF); // Грусть
+const _accentGreen = Color(0xFF83F483);
+const _accentYellow = Color(0xFFFFEB89);
+const _accentPurple = Color(0xFF9B7BFF);
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -26,6 +29,7 @@ class _AuthScreenState extends State<AuthScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  bool _acceptedPolicy = false;
   bool _isLogin = true;
   bool _loading = false;
   bool _registered = false;
@@ -59,6 +63,10 @@ class _AuthScreenState extends State<AuthScreen> {
         setState(() => _error = 'Выбери пол');
         return;
       }
+      if (!_acceptedPolicy) {
+        setState(() => _error = 'Прими условия политики конфиденциальности');
+        return;
+      }
     }
 
     setState(() {
@@ -76,38 +84,43 @@ class _AuthScreenState extends State<AuthScreen> {
             .signInWithPassword(email: email, password: password)
             .timeout(timeout);
         TextInput.finishAutofillContext(shouldSave: true);
+
+        //  синк профиль из Supabase в SharedPreferences
+        final userId = supabase.auth.currentUser!.id;
+        await UserProfileService().syncFromSupabase(userId);
+
         await NotificationService().loadSettingsFromRemote();
         await Future.delayed(const Duration(milliseconds: 300));
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
             AppRoute(page: const MainNavScaffold()),
-            (_) => false,
+                (_) => false,
           );
         }
       } else {
-        // Сохраняем имя и пол в метаданных — работает без сессии
         final response = await supabase.auth
             .signUp(
-              email: email,
-              password: password,
-              emailRedirectTo: 'mindall://email-confirm',
-              data: {'username': username, 'gender': _gender!.name},
-            )
+          email: email,
+          password: password,
+          emailRedirectTo: 'mindall://email-confirm',
+          data: {'username': username, 'gender': _gender!.name},
+        )
             .timeout(timeout);
 
         if (response.session != null && response.user != null) {
-          // Подтверждение email отключено — сразу входим
           await _saveProfile(response.user!.id, username, _gender!);
+
+          await UserProfileService().syncFromSupabase(response.user!.id);
+
           TextInput.finishAutofillContext(shouldSave: true);
           await Future.delayed(const Duration(milliseconds: 300));
           if (mounted) {
             Navigator.of(context).pushAndRemoveUntil(
               AppRoute(page: const MainNavScaffold()),
-              (_) => false,
+                  (_) => false,
             );
           }
         } else {
-          // Нужно подтверждение — показываем сообщение
           if (mounted) setState(() => _registered = true);
         }
       }
@@ -121,15 +134,15 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _saveProfile(
-    String userId,
-    String username,
-    Gender gender,
-  ) async {
+      String userId,
+      String username,
+      Gender gender,
+      ) async {
     await Supabase.instance.client.from('profiles').upsert({
       'user_id': userId,
       'username': username,
       'gender': gender.name,
-      'subscription_type': SubscriptionType.free.name,
+      'subscription_type': SubscriptionType.premium.name,
     });
     await UserProfileService().saveGender(gender);
   }
@@ -176,8 +189,7 @@ class _AuthScreenState extends State<AuthScreen> {
       return 'Подтверди email — письмо отправлено';
     if (message.contains('User already registered'))
       return 'Этот email уже зарегистрирован';
-    if (message.contains('Password should be'))
-      return 'Пароль минимум 6 символов';
+    if (message.contains('Password should be')) return 'Пароль минимум 6 символов';
     if (message.contains('security purposes') || message.contains('after'))
       return 'Подожди немного перед повторной отправкой';
     if (message.contains('rate') || message.contains('limit'))
@@ -250,6 +262,14 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
+  void _showPrivacyPolicy() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const PrivacyPolicyScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_registered) return _emailSentScreen();
@@ -274,26 +294,25 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                   children: _isLogin
                       ? [
-                          const TextSpan(text: 'Привет,\n'),
-                          TextSpan(
-                            text: 'снова ты',
-                            style: TextStyle(color: _accentGreen),
-                          ),
-                        ]
+                    const TextSpan(text: 'Привет,\n'),
+                    TextSpan(
+                      text: 'снова ты',
+                      style: TextStyle(color: _accentGreen),
+                    ),
+                  ]
                       : [
-                          const TextSpan(text: 'Создать\n'),
-                          TextSpan(
-                            text: 'аккаунт',
-                            style: TextStyle(color: _accentYellow),
-                          ),
-                        ],
+                    const TextSpan(text: 'Создать\n'),
+                    TextSpan(
+                      text: 'аккаунт',
+                      style: TextStyle(color: _accentYellow),
+                    ),
+                  ],
                 ),
                 textAlign: TextAlign.center,
               ),
 
               const SizedBox(height: 48),
 
-              // Имя + Пол — только при регистрации
               if (!_isLogin) ...[
                 _PixelField(controller: _usernameController, hint: 'имя'),
                 const SizedBox(height: 24),
@@ -327,8 +346,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       label: '—',
                       selected: _gender == Gender.preferNotToSay,
                       accent: Colors.white,
-                      onTap: () =>
-                          setState(() => _gender = Gender.preferNotToSay),
+                      onTap: () => setState(() => _gender = Gender.preferNotToSay),
                     ),
                   ],
                 ),
@@ -387,9 +405,69 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                 ),
 
-              const SizedBox(height: 36),
+              const SizedBox(height: 20),
 
-              // Кнопка
+              // Чекбокс согласия (только при регистрации)
+              if (!_isLogin) ...[
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: Checkbox(
+                        value: _acceptedPolicy,
+                        onChanged: (val) => setState(() => _acceptedPolicy = val ?? false),
+                        activeColor: _accentGreen,
+                        checkColor: Colors.black,
+                        side: const BorderSide(color: Colors.white38),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(
+                          style: const TextStyle(
+                            fontFamily: 'DotGothic',
+                            fontSize: 12,
+                            color: Colors.white70,
+                          ),
+                          children: [
+                            const TextSpan(text: 'Я принимаю '),
+                            WidgetSpan(
+                              child: GestureDetector(
+                                onTap: _showPrivacyPolicy,
+                                child: Text(
+                                  'политику конфиденциальности',
+                                  style: TextStyle(
+                                    color: _accentYellow,
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const TextSpan(text: ' и соглашаюсь с обработкой данных.'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Разработчик не несёт ответственности за использование приложения не по назначению или в нарушение законодательства.',
+                  style: TextStyle(
+                    fontFamily: 'DotGothic',
+                    fontSize: 10,
+                    color: Colors.white38,
+                    height: 1.4,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+              ],
+
+              const SizedBox(height: 16),
+
               GestureDetector(
                 onTap: _loading ? null : _submit,
                 child: Container(
@@ -402,21 +480,21 @@ class _AuthScreenState extends State<AuthScreen> {
                   child: Center(
                     child: _loading
                         ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.black,
-                              strokeWidth: 2,
-                            ),
-                          )
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.black,
+                        strokeWidth: 2,
+                      ),
+                    )
                         : Text(
-                            _isLogin ? 'войти' : 'зарегистрироваться',
-                            style: const TextStyle(
-                              fontFamily: 'DotGothic',
-                              fontSize: 16,
-                              color: Colors.black,
-                            ),
-                          ),
+                      _isLogin ? 'войти' : 'зарегистрироваться',
+                      style: const TextStyle(
+                        fontFamily: 'DotGothic',
+                        fontSize: 16,
+                        color: Colors.black,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -428,33 +506,34 @@ class _AuthScreenState extends State<AuthScreen> {
                   _isLogin = !_isLogin;
                   _error = null;
                   _gender = null;
+                  _acceptedPolicy = false;
                 }),
                 child: Text.rich(
                   _isLogin
                       ? TextSpan(
-                          children: [
-                            const TextSpan(
-                              text: 'нет аккаунта? ',
-                              style: TextStyle(color: Colors.white38),
-                            ),
-                            TextSpan(
-                              text: 'создать',
-                              style: TextStyle(color: _accentYellow),
-                            ),
-                          ],
-                        )
+                    children: [
+                      const TextSpan(
+                        text: 'нет аккаунта? ',
+                        style: TextStyle(color: Colors.white38),
+                      ),
+                      TextSpan(
+                        text: 'создать',
+                        style: TextStyle(color: _accentYellow),
+                      ),
+                    ],
+                  )
                       : TextSpan(
-                          children: [
-                            const TextSpan(
-                              text: 'уже есть аккаунт? ',
-                              style: TextStyle(color: Colors.white38),
-                            ),
-                            TextSpan(
-                              text: 'войти',
-                              style: TextStyle(color: _accentGreen),
-                            ),
-                          ],
-                        ),
+                    children: [
+                      const TextSpan(
+                        text: 'уже есть аккаунт? ',
+                        style: TextStyle(color: Colors.white38),
+                      ),
+                      TextSpan(
+                        text: 'войти',
+                        style: TextStyle(color: _accentGreen),
+                      ),
+                    ],
+                  ),
                   style: const TextStyle(fontFamily: 'DotGothic', fontSize: 13),
                 ),
               ),
@@ -548,3 +627,4 @@ class _GenderButton extends StatelessWidget {
     );
   }
 }
+

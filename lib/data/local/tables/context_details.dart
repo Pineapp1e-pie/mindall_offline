@@ -11,4 +11,7 @@ class ContextDetails extends Table {
   TextColumn get note => text().nullable()();
   TextColumn get voicePath => text().nullable()();
   TextColumn get photoPath => text().nullable()();
+
+  DateTimeColumn get updatedAt =>
+      dateTime().withDefault(currentDateAndTime)();
 }

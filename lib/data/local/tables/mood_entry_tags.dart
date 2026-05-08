@@ -13,4 +13,7 @@ class MoodEntryTags extends Table {
 
   @override
   Set<Column> get primaryKey => {moodEntryId, tagId};
+
+  DateTimeColumn get updatedAt =>
+      dateTime().withDefault(currentDateAndTime)();
 }

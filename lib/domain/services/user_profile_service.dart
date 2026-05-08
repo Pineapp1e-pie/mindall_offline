@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_profile.dart';
 
 class UserProfileService extends ChangeNotifier {
@@ -163,5 +164,38 @@ class UserProfileService extends ChangeNotifier {
     await prefs.remove(_notifHourKey);
     await prefs.remove(_notifMinuteKey);
     await prefs.remove(_subscriptionTypeKey);
+  }
+
+  // user_profile_service.dart
+  Future<void> syncFromSupabase(String userId) async {
+    final response = await Supabase.instance.client
+        .from('profiles')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (response != null) {
+      final genderStr = response['gender'] as String?;
+      final username = response['username'] as String?;
+      final subscriptionStr = response['subscription_type'] as String?;
+
+      if (genderStr != null) {
+        final gender = Gender.values.firstWhere(
+              (g) => g.name == genderStr,
+          orElse: () => Gender.preferNotToSay,
+        );
+        await saveGender(gender);
+      }
+      if (username != null) {
+        await saveUsername(username);
+      }
+      if (subscriptionStr != null) {
+        final subType = SubscriptionType.values.firstWhere(
+              (t) => t.name == subscriptionStr,
+          orElse: () => SubscriptionType.free,
+        );
+        await saveSubscriptionType(subType);
+      }
+    }
   }
 }

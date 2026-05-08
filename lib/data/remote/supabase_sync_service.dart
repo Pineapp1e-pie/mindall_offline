@@ -77,11 +77,11 @@ class SupabaseSyncService {
       );
       await _step(
         'achievements↓',
-        _syncAchievementsFromSupabase().timeout(const Duration(seconds: 10)),
+        _syncAchievementsFromSupabase().timeout(const Duration(seconds: 30)),
       );
       await _step(
         'achievements↑',
-        _syncAchievementsToSupabase().timeout(const Duration(seconds: 10)),
+        _syncAchievementsToSupabase().timeout(const Duration(seconds: 30)),
       );
     } finally {
       _isSyncing = false;
@@ -470,6 +470,7 @@ class SupabaseSyncService {
           userId: _userId,
           moodId: row['mood_id'] as int,
           createdAt: Value(createdAt),
+          updatedAt: Value(DateTime.now()),
         ),
       );
 
@@ -489,6 +490,7 @@ class SupabaseSyncService {
             photoPath: Value(
               await _downloadPhotoPath(ctx['photo_path'] as String?),
             ),
+            updatedAt: Value(DateTime.now()),
           ),
         );
       }
@@ -506,6 +508,7 @@ class SupabaseSyncService {
             MoodEntryTagsCompanion.insert(
               moodEntryId: localEntryId,
               tagId: localTag.id,
+              updatedAt: Value(DateTime.now()),
             ),
           );
           print('[Sync] download: добавлен тег $tagName для $remoteCreatedAtStr');
@@ -538,6 +541,7 @@ class SupabaseSyncService {
             ),
             rawTemperature:
             Value((w['raw_temperature'] as num?)?.toDouble()),
+            updatedAt: Value(DateTime.now()),
           ),
         );
       }
@@ -574,6 +578,7 @@ class SupabaseSyncService {
                 : null,
           ),
           source: Value(row['source'] as String?),
+          updatedAt: Value(DateTime.now()),
         ),
       );
     }
@@ -630,6 +635,7 @@ class SupabaseSyncService {
         a.synced.equals(false),
       ))
         .get();
+    print('[Sync] achievements↑: найдено ${unsynced.length} unsynced');
     if (unsynced.isEmpty) return;
 
     print('[Sync] achievements↑: отправка ${unsynced.length} несинхронизированных достижений');
@@ -644,7 +650,7 @@ class SupabaseSyncService {
       )
           .toList(),
     );
-    print('[Sync] achievements↑: достижения отправлены');
+    print('[Sync] achievements↑: ${unsynced.length} достижения отправлены');
 
     for (final achievement in unsynced) {
       await (_db.update(_db.userAchievements)

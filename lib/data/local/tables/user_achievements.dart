@@ -9,4 +9,5 @@ class UserAchievements extends Table {
 
   @override
   Set<Column> get primaryKey => {userId, achievementId};
+
 }
