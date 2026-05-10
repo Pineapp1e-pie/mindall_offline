@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:excel/excel.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:mindall/data/local/static/weather_labels.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -58,18 +59,39 @@ class ExportService {
     final entries = await _repo.getMoodEntriesWithMoodForPeriod(from, to);
     entries.sort((a, b) => a.entry.createdAt.compareTo(b.entry.createdAt));
 
+    // 1. Загружаем теги для всех записей (Map<entryId, List<ContextTag>>)
+    final tagsMap = <int, List<ContextTag>>{};
+    for (final e in entries) {
+      final tags = await _repo.getTagsForEntry(e.entry.id);
+      tagsMap[e.entry.id] = tags;
+    }
+
+    // 2. Загружаем данные здоровья по дням (Map<dayKey, HealthDataData>)
+    final healthMap = <int, HealthDataData>{};
+    final healthDataList = await _repo.getHealthDataForPeriod(from, to);
+    for (final h in healthDataList) {
+      final dayKey = DateTime(h.date.year, h.date.month, h.date.day).millisecondsSinceEpoch;
+      healthMap[dayKey] = h;
+    }
+
+    // 3. Загружаем погоду для каждой записи (Map<entryId, WeatherDataData>)
+    final weatherMap = <int, WeatherDataData>{};
+    for (final e in entries) {
+      final weather = await _repo.getWeatherForEntry(e.entry.id);
+      if (weather != null) weatherMap[e.entry.id] = weather;
+    }
+
     final excel = Excel.createExcel();
-    // createExcel создаёт дефолтный 'Sheet1' — переименуем
     excel.rename('Sheet1', 'Записи');
     final sheet = excel['Записи'];
 
-    final headers = ['Дата', 'Время', 'Настроение', 'Квадрант', 'Заметка'];
+    final headers = [
+      'Дата', 'Время', 'Настроение', 'Квадрант', 'Теги', 'Заметка',
+      'Шаги', 'Сон (ч)', 'Фаза цикла', 'Температура', 'Осадки', 'Облачность'
+    ];
     for (var i = 0; i < headers.length; i++) {
-      sheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0))
-          .value = TextCellValue(
-        headers[i],
-      );
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0))
+          .value = TextCellValue(headers[i]);
     }
 
     final dateFmt = DateFormat('dd.MM.yyyy');
@@ -77,34 +99,72 @@ class ExportService {
 
     for (var i = 0; i < entries.length; i++) {
       final e = entries[i];
-      final details = await _repo.getContextDetailsForEntry(e.entry.id);
       final row = i + 1;
 
-      sheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: row))
-          .value = TextCellValue(
-        dateFmt.format(e.entry.createdAt),
-      );
-      sheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: row))
-          .value = TextCellValue(
-        timeFmt.format(e.entry.createdAt),
-      );
-      sheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: row))
-          .value = TextCellValue(
-        e.mood.name,
-      );
-      sheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: row))
-          .value = TextCellValue(
-        _categoryLabel(e.mood.category),
-      );
-      sheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: row))
-          .value = TextCellValue(
-        details?.note ?? '',
-      );
+      // Базовая информация
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: row))
+          .value = TextCellValue(dateFmt.format(e.entry.createdAt));
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: row))
+          .value = TextCellValue(timeFmt.format(e.entry.createdAt));
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: row))
+          .value = TextCellValue(e.mood.name);
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: row))
+          .value = TextCellValue(_categoryLabel(e.mood.category));
+
+      // Теги (колонка 4)
+      final tags = tagsMap[e.entry.id] ?? [];
+      final tagsStr = tags.map((t) => t.name).join(', ');
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: row))
+          .value = TextCellValue(tagsStr);
+
+      // Заметка (колонка 5)
+      final details = await _repo.getContextDetailsForEntry(e.entry.id);
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: row))
+          .value = TextCellValue(details?.note ?? '');
+
+      // Данные здоровья за день (колонки 6,7,8)
+      final dayKey = DateTime(e.entry.createdAt.year, e.entry.createdAt.month, e.entry.createdAt.day)
+          .millisecondsSinceEpoch;
+      final health = healthMap[dayKey];
+      if (health != null) {
+        // Шаги
+        if (health.stepsAmount != null) {
+          sheet.cell(CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: row))
+              .value = IntCellValue(health.stepsAmount!);
+        }
+        // Сон (часы)
+        if (health.sleepMinutes != null) {
+          final sleepHours = (health.sleepMinutes! / 60).toStringAsFixed(1);
+          sheet.cell(CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: row))
+              .value = TextCellValue(sleepHours);
+        }
+        // Фаза цикла
+        if (health.cyclePhase != null) {
+          sheet.cell(CellIndex.indexByColumnRow(columnIndex: 8, rowIndex: row))
+              .value = TextCellValue(_cycleLabel(health.cyclePhase!));
+        }
+      }
+
+      // Погода (колонки 9,10,11) – используем ваши расширения
+      final weather = weatherMap[e.entry.id];
+      if (weather != null) {
+        // Температура
+        final tempStr = weather.rawTemperature != null
+            ? '${weather.rawTemperature!.toStringAsFixed(0)}°C'
+            : weather.temperatureCategory.labelRu;
+        sheet.cell(CellIndex.indexByColumnRow(columnIndex: 9, rowIndex: row))
+            .value = TextCellValue(tempStr);
+
+        // Осадки
+        final precipStr = weather.precipitation?.labelRu ?? '';
+        sheet.cell(CellIndex.indexByColumnRow(columnIndex: 10, rowIndex: row))
+            .value = TextCellValue(precipStr);
+
+        // Облачность
+        final cloudStr = weather.cloudiness?.labelRu ?? '';
+        sheet.cell(CellIndex.indexByColumnRow(columnIndex: 11, rowIndex: row))
+            .value = TextCellValue(cloudStr);
+      }
     }
 
     final dir = await getApplicationDocumentsDirectory();
