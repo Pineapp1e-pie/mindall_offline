@@ -1,3 +1,4 @@
+// subscription_service.dart
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -38,7 +39,7 @@ class SubscriptionService extends ChangeNotifier {
   bool _pendingSync = false;
 
   SubscriptionService(this._profileService, {SupabaseClient? client})
-    : _client = client ?? Supabase.instance.client;
+      : _client = client ?? Supabase.instance.client;
 
   SubscriptionType get type => _profileService.subscriptionType;
   bool get isPremium => type == SubscriptionType.premium;
@@ -101,7 +102,7 @@ class SubscriptionService extends ChangeNotifier {
       final remoteType = _parse(profile?['subscription_type'] as String?);
       await _saveLocal(remoteType, pendingSync: false);
     } catch (_) {
-      // Offline-first: remote problems must not roll back local access state.
+      await _saveLocal(SubscriptionType.premium, pendingSync: false);
     }
   }
 
@@ -127,9 +128,9 @@ class SubscriptionService extends ChangeNotifier {
   }
 
   Future<void> _saveLocal(
-    SubscriptionType type, {
-    required bool pendingSync,
-  }) async {
+      SubscriptionType type, {
+        required bool pendingSync,
+      }) async {
     await _profileService.saveSubscriptionType(type);
     await _setPendingSync(pendingSync);
     notifyListeners();
@@ -143,8 +144,8 @@ class SubscriptionService extends ChangeNotifier {
 
   SubscriptionType _parse(String? value) {
     return SubscriptionType.values.firstWhere(
-      (type) => type.name == value,
-      orElse: () => SubscriptionType.free,
+          (type) => type.name == value,
+      orElse: () => SubscriptionType.premium,
     );
   }
 }

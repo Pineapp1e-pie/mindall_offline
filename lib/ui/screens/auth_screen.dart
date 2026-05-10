@@ -1,15 +1,16 @@
-
-
-import 'package:mindall/ui/app_route.dart';
+// auth_screen.dart
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mindall/ui/app_route.dart';
 import 'package:mindall/ui/screens/policy_screen.dart';
+import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../domain/models/user_profile.dart';
 import '../../domain/services/notification_service.dart';
+import '../../domain/services/subscription_service.dart';
 import '../../domain/services/user_profile_service.dart';
 import 'main_nav_scaffold.dart';
 
@@ -77,6 +78,8 @@ class _AuthScreenState extends State<AuthScreen> {
 
     try {
       final supabase = Supabase.instance.client;
+      final profileService = context.read<UserProfileService>();
+      final subscriptionService = context.read<SubscriptionService>();
 
       const timeout = Duration(seconds: 5);
       if (_isLogin) {
@@ -85,9 +88,9 @@ class _AuthScreenState extends State<AuthScreen> {
             .timeout(timeout);
         TextInput.finishAutofillContext(shouldSave: true);
 
-        //  синк профиль из Supabase в SharedPreferences
-        final userId = supabase.auth.currentUser!.id;
-        await UserProfileService().syncFromSupabase(userId);
+        final user = supabase.auth.currentUser!;
+        await profileService.syncFromSupabase(user.id);
+        await subscriptionService.syncFromRemote(user);
 
         await NotificationService().loadSettingsFromRemote();
         await Future.delayed(const Duration(milliseconds: 300));
@@ -108,9 +111,15 @@ class _AuthScreenState extends State<AuthScreen> {
             .timeout(timeout);
 
         if (response.session != null && response.user != null) {
-          await _saveProfile(response.user!.id, username, _gender!);
+          await _saveProfile(
+            response.user!.id,
+            username,
+            _gender!,
+            profileService,
+          );
 
-          await UserProfileService().syncFromSupabase(response.user!.id);
+          await profileService.syncFromSupabase(response.user!.id);
+          await subscriptionService.syncFromRemote(response.user!);
 
           TextInput.finishAutofillContext(shouldSave: true);
           await Future.delayed(const Duration(milliseconds: 300));
@@ -137,6 +146,7 @@ class _AuthScreenState extends State<AuthScreen> {
       String userId,
       String username,
       Gender gender,
+      UserProfileService profileService,
       ) async {
     await Supabase.instance.client.from('profiles').upsert({
       'user_id': userId,
@@ -144,7 +154,9 @@ class _AuthScreenState extends State<AuthScreen> {
       'gender': gender.name,
       'subscription_type': SubscriptionType.premium.name,
     });
-    await UserProfileService().saveGender(gender);
+    await profileService.saveUsername(username);
+    await profileService.saveGender(gender);
+    await profileService.saveSubscriptionType(SubscriptionType.premium);
   }
 
   Future<void> _forgotPassword() async {
@@ -407,7 +419,6 @@ class _AuthScreenState extends State<AuthScreen> {
 
               const SizedBox(height: 20),
 
-              // Чекбокс согласия (только при регистрации)
               if (!_isLogin) ...[
                 Row(
                   children: [
@@ -627,4 +638,3 @@ class _GenderButton extends StatelessWidget {
     );
   }
 }
-

@@ -1,4 +1,3 @@
-import 'package:mindall/ui/app_route.dart';
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
@@ -7,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:mindall/ui/app_route.dart';
 import 'package:provider/provider.dart';
 
 import 'data/local/app_database.dart';
@@ -24,12 +24,10 @@ import 'ui/screens/main_nav_scaffold.dart';
 import 'ui/screens/auth_screen.dart';
 import 'ui/screens/reset_password_screen.dart';
 import 'data/remote/supabase_sync_service.dart';
+import 'ui/widgets/sync_issue_listener.dart';
 import 'package:intl/intl.dart';
-
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-
-
 
 void main() async {
   Intl.defaultLocale = 'ru';
@@ -57,13 +55,9 @@ void main() async {
   await MoodsInitializer(database).init();
   await ContextTagsInitializer(database).init();
 
-  // Инициализируем WorkManager для синхронизации шагов
   await initWorkManager();
-
-  // Инициализируем FCM-уведомления
   await NotificationService().init();
 
-  // Регистрируем FCM-токен если пользователь уже залогинен (не блокируем запуск)
   if (Supabase.instance.client.auth.currentSession != null) {
     NotificationService().registerToken();
   }
@@ -72,7 +66,7 @@ void main() async {
     MultiProvider(
       providers: [
         Provider<LocalRepository>(create: (_) => repository),
-        Provider<SupabaseSyncService>(create: (_) => syncService),
+        ChangeNotifierProvider<SupabaseSyncService>.value(value: syncService),
         Provider<AchievementService>(create: (_) => achievementService),
         ChangeNotifierProvider<UserProfileService>(create: (_) => profileService),
         ChangeNotifierProvider<SubscriptionService>(create: (_) => subscriptionService),
@@ -81,8 +75,6 @@ void main() async {
     ),
   );
 }
-
-
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
@@ -95,21 +87,26 @@ class _MyAppState extends State<MyApp> {
   bool _loggedIn = Supabase.instance.client.auth.currentSession != null;
   bool _wasOffline = false;
   final _navigatorKey = GlobalKey<NavigatorState>();
+  final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
   StreamSubscription? _linkSub;
+
+  void _syncAuthenticatedUser(User user) {
+    unawaited(context.read<SupabaseSyncService>().syncAll());
+    unawaited(context.read<SubscriptionService>().syncFromRemote(user));
+  }
 
   @override
   void initState() {
     super.initState();
 
-    // Синхронизация при старте если уже залогинены
     if (_loggedIn) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        context.read<SupabaseSyncService>().syncAll();
-        context.read<SubscriptionService>().syncLocalToRemote();
+        final user = Supabase.instance.client.auth.currentUser;
+        if (!mounted || user == null) return;
+        _syncAuthenticatedUser(user);
       });
     }
 
-    // Синхронизация при входе в аккаунт
     Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (!mounted) return;
       final wasLoggedIn = _loggedIn;
@@ -120,61 +117,50 @@ class _MyAppState extends State<MyApp> {
           if (!mounted) return;
           _navigatorKey.currentState?.pushAndRemoveUntil(
             AppRoute(page: const ResetPasswordScreen()),
-            (_) => false,
+                (_) => false,
           );
         });
         return;
       }
 
       if (!wasLoggedIn && data.session != null) {
-        context.read<SupabaseSyncService>().syncAll();
-        context.read<SubscriptionService>().syncLocalToRemote();
+        _syncAuthenticatedUser(data.session!.user);
         NotificationService().registerToken();
         NotificationService().loadSettingsFromRemote();
       }
     });
 
-    // Синхронизация когда появляется интернет
     Connectivity().onConnectivityChanged.listen((results) {
       if (!mounted) return;
       final isOnline = results.any((r) => r != ConnectivityResult.none);
       if (isOnline && _wasOffline && _loggedIn) {
-        context.read<SupabaseSyncService>().syncAll();
-        context.read<SubscriptionService>().syncLocalToRemote();
+        final user = Supabase.instance.client.auth.currentUser;
+        if (user != null) {
+          _syncAuthenticatedUser(user);
+        }
       }
       _wasOffline = !isOnline;
     });
 
-    // Deep link обработка
     _initDeepLinks();
   }
 
   Future<void> _initDeepLinks() async {
     final appLinks = AppLinks();
-
-    // Ссылка при холодном старте (приложение было закрыто)
     final initialUri = await appLinks.getInitialLink();
-    if (initialUri != null) {
-      _handleDeepLink(initialUri);
-    }
-
-    // Ссылка пока приложение работает
+    if (initialUri != null) _handleDeepLink(initialUri);
     _linkSub = appLinks.uriLinkStream.listen(_handleDeepLink);
   }
 
   Future<void> _handleDeepLink(Uri uri) async {
     try {
       final refreshToken = uri.queryParameters['refresh_token'];
-
-
       if (refreshToken != null) {
         await Supabase.instance.client.auth.setSession(refreshToken);
         return;
       }
-
       await Supabase.instance.client.auth.getSessionFromUrl(uri);
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   @override
@@ -183,22 +169,23 @@ class _MyAppState extends State<MyApp> {
     super.dispose();
   }
 
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: _navigatorKey,
+      scaffoldMessengerKey: _scaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
       home: _loggedIn ? const MainNavScaffold() : const AuthScreen(),
+      builder: (context, child) => SyncIssueListener(
+        scaffoldMessengerKey: _scaffoldMessengerKey,
+        child: child ?? const SizedBox.shrink(),
+      ),
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: const [
-        Locale('ru', 'RU'),
-        Locale('en', 'US'),
-      ],
+      supportedLocales: const [Locale('ru', 'RU'), Locale('en', 'US')],
       locale: const Locale('ru', 'RU'),
     );
   }

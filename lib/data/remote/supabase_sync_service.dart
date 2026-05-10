@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -12,12 +15,31 @@ import 'file_storage_service.dart';
 const _kPendingDeletionsKey = 'pending_entry_deletions';
 const _kPendingHealthDeletionsKey = 'pending_health_deletions';
 
-class SupabaseSyncService {
+/// Данные об ошибке синхронизации для отображения в UI
+class SyncIssue {
+  final int id;
+  final String title;
+  final String reason;
+  final String details;
+
+  const SyncIssue({
+    required this.id,
+    required this.title,
+    required this.reason,
+    required this.details,
+  });
+}
+
+class SupabaseSyncService extends ChangeNotifier {
   final AppDatabase _db;
   final SupabaseClient _client;
   final FileStorageService _files;
 
   bool _isSyncing = false;
+  int _issueCounter = 0;
+  SyncIssue? _pendingIssue;
+
+  SyncIssue? get pendingIssue => _pendingIssue;
 
   SupabaseSyncService(this._db)
       : _client = Supabase.instance.client,
@@ -29,72 +51,140 @@ class SupabaseSyncService {
     return id;
   }
 
-  // Future<void> syncAll() async {
-  //   if (_client.auth.currentUser == null) return;
-  //   if (_isSyncing) return;
-  //   _isSyncing = true;
-  //   try {
-  //     await _step(
-  //       'deletions',
-  //       flushPendingDeletions().timeout(const Duration(seconds: 10)),
-  //     );
-  //     await _step(
-  //       'upload',
-  //       _upload().timeout(const Duration(seconds: 30)),
-  //     );
-  //     await _step(
-  //       'download',
-  //       _download().timeout(const Duration(seconds: 30)),
-  //     );
-  //     await _step(
-  //       'achievements↓',
-  //       _syncAchievementsFromSupabase().timeout(const Duration(seconds: 10)),
-  //     );
-  //     await _step(
-  //       'achievements↑',
-  //       _syncAchievementsToSupabase().timeout(const Duration(seconds: 10)),
-  //     );
-  //   } finally {
-  //     _isSyncing = false;
-  //   }
-  // }
+  // ============================================================================
+  // Публичные методы синхронизации с поддержкой ошибок для UI
+  // ============================================================================
+
   Future<void> syncAll() async {
     if (_client.auth.currentUser == null) return;
     if (_isSyncing) return;
     _isSyncing = true;
+
+    SyncIssue? firstIssue;
+
     try {
-      await _step(
+      firstIssue ??= await _step(
         'deletions',
         flushPendingDeletions().timeout(const Duration(seconds: 10)),
       );
-      await _step(
+      firstIssue ??= await _step(
         'upload',
         _upload().timeout(const Duration(seconds: 30)),
       );
-      await _step(
+      firstIssue ??= await _step(
         'download',
         _download().timeout(const Duration(seconds: 120)),
       );
-      await _step(
+      firstIssue ??= await _step(
         'achievements↓',
         _syncAchievementsFromSupabase().timeout(const Duration(seconds: 30)),
       );
-      await _step(
+      firstIssue ??= await _step(
         'achievements↑',
         _syncAchievementsToSupabase().timeout(const Duration(seconds: 30)),
       );
+
+      if (firstIssue != null) {
+        _publishIssue(firstIssue);
+      }
     } finally {
       _isSyncing = false;
     }
   }
 
-  Future<void> _step(String name, Future<void> work) async {
+  /// Очищает показанную ошибку (вызывается из UI после отображения)
+  void clearPendingIssue(int id) {
+    if (_pendingIssue?.id != id) return;
+    _pendingIssue = null;
+    notifyListeners();
+  }
+
+  /// Метод для очереди удаления записи
+  Future<void> queueEntryDeletion(DateTime createdAt) async {
+    await _addPendingDeletion(createdAt.toUtc().toIso8601String());
+  }
+
+  /// Метод для очереди удаления health-данных
+  Future<void> queueHealthDeletion(DateTime day) async {
+    await _addPendingHealthDeletion(_formatDay(day));
+  }
+
+  /// Удаление записи (моментальное + очередь при ошибке)
+  Future<void> deleteEntry(DateTime createdAt) async {
+    if (_client.auth.currentUser == null) return;
+    final createdAtStr = createdAt.toUtc().toIso8601String();
+    print('[Sync] deleteEntry: ставим в очередь удаление записи $createdAtStr');
+    await _addPendingDeletion(createdAtStr);
     try {
-      await work;
-    } catch (e, st) {
-      print('[Sync] ошибка $name: $e\n$st');
+      print('[Sync] deleteEntry: удаляем связанные данные для $createdAtStr');
+      await _client
+          .from('context_details')
+          .delete()
+          .eq('user_id', _userId)
+          .eq('mood_entry_created_at', createdAtStr);
+      await _client
+          .from('mood_entry_tags')
+          .delete()
+          .eq('user_id', _userId)
+          .eq('mood_entry_created_at', createdAtStr);
+      await _client
+          .from('weather_data')
+          .delete()
+          .eq('user_id', _userId)
+          .eq('mood_entry_created_at', createdAtStr);
+      await _client
+          .from('mood_entries')
+          .delete()
+          .eq('user_id', _userId)
+          .eq('created_at', createdAtStr);
+      await _removePendingDeletion(createdAtStr);
+      print('[Sync] deleteEntry: запись и связанные данные удалены');
+    } catch (e) {
+      print('[Sync] ошибка deleteEntry, добавлено в очередь: $e');
     }
   }
+
+  /// Удаление health-данных за день
+  Future<void> deleteHealthForDay(DateTime day) async {
+    if (_client.auth.currentUser == null) return;
+    final dateStr = _formatDay(day);
+    print('[Sync] deleteHealthForDay: ставим в очередь удаление health для $dateStr');
+    await _addPendingHealthDeletion(dateStr);
+    try {
+      print('[Sync] deleteHealthForDay: удаляем health_data для $dateStr в Supabase');
+      await _client
+          .from('health_data')
+          .delete()
+          .eq('user_id', _userId)
+          .eq('date', dateStr);
+      await _removePendingHealthDeletion(dateStr);
+      print('[Sync] deleteHealthForDay: health удалён для $dateStr');
+    } catch (e) {
+      print('[Sync] ошибка deleteHealthForDay, добавлено в очередь: $e');
+    }
+  }
+
+  /// Удаление тега из записи
+  Future<void> deleteTagFromEntry(DateTime entryCreatedAt, String tagName) async {
+    if (_client.auth.currentUser == null) return;
+    final createdAtStr = entryCreatedAt.toUtc().toIso8601String();
+    print('[Sync] deleteTagFromEntry: удаляем тег $tagName у записи $createdAtStr');
+    try {
+      await _client
+          .from('mood_entry_tags')
+          .delete()
+          .eq('user_id', _userId)
+          .eq('mood_entry_created_at', createdAtStr)
+          .eq('tag_name', tagName);
+      print('[Sync] deleteTagFromEntry: тег удалён');
+    } catch (e) {
+      print('[Sync] deleteTagFromEntry error: $e');
+    }
+  }
+
+  // ============================================================================
+  // Приватные методы для работы с очередями удаления
+  // ============================================================================
 
   Future<List<String>> _getPendingDeletions() async {
     final prefs = await SharedPreferences.getInstance();
@@ -136,14 +226,6 @@ class SupabaseSyncService {
     final list = prefs.getStringList(_kPendingHealthDeletionsKey) ?? [];
     list.remove(dateStr);
     await prefs.setStringList(_kPendingHealthDeletionsKey, list);
-  }
-
-  Future<void> queueEntryDeletion(DateTime createdAt) async {
-    await _addPendingDeletion(createdAt.toUtc().toIso8601String());
-  }
-
-  Future<void> queueHealthDeletion(DateTime day) async {
-    await _addPendingHealthDeletion(_formatDay(day));
   }
 
   Future<void> flushPendingDeletions() async {
@@ -200,6 +282,49 @@ class SupabaseSyncService {
     }
   }
 
+  // ============================================================================
+  // Приватные методы синхронизации с обработкой ошибок для UI
+  // ============================================================================
+
+  Future<SyncIssue?> _step(String name, Future<void> work) async {
+    try {
+      await work;
+      return null;
+    } catch (e, st) {
+      debugPrint('[Sync] ошибка $name: $e\n$st');
+      return _buildSyncIssue(e);
+    }
+  }
+
+  SyncIssue _buildSyncIssue(Object error) {
+    final message = error.toString().toLowerCase();
+    final reason = switch (error) {
+      SocketException() => 'ошибка подключения к серверу',
+      TimeoutException() => 'сервер не отвечает вовремя',
+      _ when message.contains('failed host lookup') => 'ошибка подключения к серверу',
+      _ when message.contains('socketexception') => 'ошибка подключения к серверу',
+      _ when message.contains('timed out') => 'сервер не отвечает вовремя',
+      _ => 'временная ошибка синхронизации',
+    };
+
+    return SyncIssue(
+      id: ++_issueCounter,
+      title: 'Не удалось выполнить синхронизацию',
+      reason: reason,
+      details: 'Данные сохранены локально и будут повторно отправлены '
+          'при восстановлении сети.',
+    );
+  }
+
+  void _publishIssue(SyncIssue issue) {
+    _pendingIssue = issue;
+    notifyListeners();
+  }
+
+  // ============================================================================
+  // Upload методов
+  // ============================================================================
+
   Future<void> _upload() async {
     print('[Sync] upload: начало');
     final entries = await _db.select(_db.moodEntries).get();
@@ -224,9 +349,6 @@ class SupabaseSyncService {
       print('[Sync] upload: обрабатываем запись $createdAtStr');
 
       // --- Context ---
-      final ctxCount = await _db.select(_db.contextDetails).get();
-      print('[DEBUG] context count: ${ctxCount.length}');
-
       try {
         final ctx = await (_db.select(_db.contextDetails)
           ..where((c) => c.moodEntryId.equals(entry.id)))
@@ -245,7 +367,7 @@ class SupabaseSyncService {
 
           String? remoteVoicePath = ctx.voicePath;
           var includeVoicePath = true;
-          if (_files.isLocalPath(ctx.voicePath)) {
+          if (ctx.voicePath != null && _files.isLocalPath(ctx.voicePath!)) {
             final storagePath = '$_userId/$ts.aac';
             print('[Sync] upload: загружаем голосовое $storagePath');
             remoteVoicePath = await _files.uploadVoice(ctx.voicePath!, storagePath);
@@ -384,6 +506,10 @@ class SupabaseSyncService {
     }
   }
 
+  // ============================================================================
+  // Download методов
+  // ============================================================================
+
   String _formatDay(DateTime value) =>
       '${value.year.toString().padLeft(4, '0')}-'
           '${value.month.toString().padLeft(2, '0')}-'
@@ -398,9 +524,9 @@ class SupabaseSyncService {
   }
 
   Future<String?> _downloadVoicePath(String? remotePath) async {
-    if (_files.isStoragePath(remotePath)) {
+    if (remotePath != null && _files.isStoragePath(remotePath)) {
       print('[Sync] download: загружаем голосовое $remotePath');
-      return await _files.downloadVoice(remotePath!) ?? remotePath;
+      return await _files.downloadVoice(remotePath) ?? remotePath;
     }
     return remotePath;
   }
@@ -440,8 +566,7 @@ class SupabaseSyncService {
     print('[Sync] download: получено ${remoteHealth.length} health_data');
 
     final pendingDeletions = await _getPendingDeletions();
-    final pendingHealthDeletions =
-    (await _getPendingHealthDeletions()).toSet();
+    final pendingHealthDeletions = (await _getPendingHealthDeletions()).toSet();
 
     for (final row in remoteEntries) {
       final remoteCreatedAtStr = row['created_at'] as String;
@@ -455,8 +580,7 @@ class SupabaseSyncService {
       final createdAt = DateTime.parse(remoteCreatedAtStr).toLocal();
       final existingEntry = await (_db.select(_db.moodEntries)
         ..where(
-              (e) =>
-          e.createdAt.equals(createdAt) & e.userId.equals(_userId),
+              (e) => e.createdAt.equals(createdAt) & e.userId.equals(_userId),
         ))
           .getSingleOrNull();
       if (existingEntry != null) {
@@ -527,8 +651,7 @@ class SupabaseSyncService {
           WeatherDataCompanion.insert(
             moodEntryId: localEntryId,
             source: w['source'] as String? ?? 'manual',
-            temperatureCategory:
-            TemperatureCategory.values[w['temperature_category'] as int],
+            temperatureCategory: TemperatureCategory.values[w['temperature_category'] as int],
             precipitation: Value(
               w['precipitation'] != null
                   ? PrecipitationType.values[w['precipitation'] as int]
@@ -539,8 +662,7 @@ class SupabaseSyncService {
                   ? Cloudiness.values[w['cloudiness'] as int]
                   : null,
             ),
-            rawTemperature:
-            Value((w['raw_temperature'] as num?)?.toDouble()),
+            rawTemperature: Value((w['raw_temperature'] as num?)?.toDouble()),
             updatedAt: Value(DateTime.now()),
           ),
         );
@@ -586,6 +708,10 @@ class SupabaseSyncService {
     print('=== DOWNLOAD DONE ===');
   }
 
+  // ============================================================================
+  // Синхронизация достижений
+  // ============================================================================
+
   Future<void> _syncAchievementsFromSupabase() async {
     print('[Sync] achievements↓: начало');
     final remote =
@@ -600,9 +726,7 @@ class SupabaseSyncService {
 
       final localRows = await (_db.select(_db.userAchievements)
         ..where(
-              (a) =>
-          a.userId.equals(_userId) &
-          a.achievementId.equals(achievementId),
+              (a) => a.userId.equals(_userId) & a.achievementId.equals(achievementId),
         ))
           .get();
 
@@ -611,9 +735,7 @@ class SupabaseSyncService {
       print('[Sync] achievements↓: обновляем достижение $achievementId');
       await (_db.update(_db.userAchievements)
         ..where(
-              (a) =>
-          a.userId.equals(_userId) &
-          a.achievementId.equals(achievementId),
+              (a) => a.userId.equals(_userId) & a.achievementId.equals(achievementId),
         ))
           .write(
         UserAchievementsCompanion(
@@ -629,10 +751,7 @@ class SupabaseSyncService {
     print('[Sync] achievements↑: начало');
     final unsynced = await (_db.select(_db.userAchievements)
       ..where(
-            (a) =>
-        a.userId.equals(_userId) &
-        a.isAchieved.equals(true) &
-        a.synced.equals(false),
+            (a) => a.userId.equals(_userId) & a.isAchieved.equals(true) & a.synced.equals(false),
       ))
         .get();
     print('[Sync] achievements↑: найдено ${unsynced.length} unsynced');
@@ -655,82 +774,9 @@ class SupabaseSyncService {
     for (final achievement in unsynced) {
       await (_db.update(_db.userAchievements)
         ..where(
-              (row) =>
-          row.userId.equals(_userId) &
-          row.achievementId.equals(achievement.achievementId),
+              (row) => row.userId.equals(_userId) & row.achievementId.equals(achievement.achievementId),
         ))
           .write(const UserAchievementsCompanion(synced: Value(true)));
     }
   }
-
-  Future<void> deleteHealthForDay(DateTime day) async {
-    if (_client.auth.currentUser == null) return;
-    final dateStr = _formatDay(day);
-    print('[Sync] deleteHealthForDay: ставим в очередь удаление health для $dateStr');
-    await _addPendingHealthDeletion(dateStr);
-    try {
-      print('[Sync] deleteHealthForDay: удаляем health_data для $dateStr в Supabase');
-      await _client
-          .from('health_data')
-          .delete()
-          .eq('user_id', _userId)
-          .eq('date', dateStr);
-      await _removePendingHealthDeletion(dateStr);
-      print('[Sync] deleteHealthForDay: health удалён для $dateStr');
-    } catch (e) {
-      print('[Sync] ошибка deleteHealthForDay, добавлено в очередь: $e');
-    }
-  }
-
-  Future<void> deleteTagFromEntry(DateTime entryCreatedAt, String tagName) async {
-    if (_client.auth.currentUser == null) return;
-    final createdAtStr = entryCreatedAt.toUtc().toIso8601String();
-    print('[Sync] deleteTagFromEntry: удаляем тег $tagName у записи $createdAtStr');
-    try {
-      await _client
-          .from('mood_entry_tags')
-          .delete()
-          .eq('user_id', _userId)
-          .eq('mood_entry_created_at', createdAtStr)
-          .eq('tag_name', tagName);
-      print('[Sync] deleteTagFromEntry: тег удалён');
-    } catch (e) {
-      print('[Sync] deleteTagFromEntry error: $e');
-    }
-  }
-
-  Future<void> deleteEntry(DateTime createdAt) async {
-    if (_client.auth.currentUser == null) return;
-    final createdAtStr = createdAt.toUtc().toIso8601String();
-    print('[Sync] deleteEntry: ставим в очередь удаление записи $createdAtStr');
-    await _addPendingDeletion(createdAtStr);
-    try {
-      print('[Sync] deleteEntry: удаляем связанные данные для $createdAtStr');
-      await _client
-          .from('context_details')
-          .delete()
-          .eq('user_id', _userId)
-          .eq('mood_entry_created_at', createdAtStr);
-      await _client
-          .from('mood_entry_tags')
-          .delete()
-          .eq('user_id', _userId)
-          .eq('mood_entry_created_at', createdAtStr);
-      await _client
-          .from('weather_data')
-          .delete()
-          .eq('user_id', _userId)
-          .eq('mood_entry_created_at', createdAtStr);
-      await _client
-          .from('mood_entries')
-          .delete()
-          .eq('user_id', _userId)
-          .eq('created_at', createdAtStr);
-      await _removePendingDeletion(createdAtStr);
-      print('[Sync] deleteEntry: запись и связанные данные удалены');
-    } catch (e) {
-      print('[Sync] ошибка deleteEntry, добавлено в очередь: $e');
-    }
-  }
 }
-

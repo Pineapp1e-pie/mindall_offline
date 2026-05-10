@@ -1,3 +1,4 @@
+// user_profile_service.dart
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -17,7 +18,7 @@ class UserProfileService extends ChangeNotifier {
   Gender? _gender;
   CycleSettings? _cycleSettings;
   String? _username;
-  SubscriptionType _subscriptionType = SubscriptionType.free;
+  SubscriptionType _subscriptionType = SubscriptionType.premium;
 
   Gender? get gender => _gender;
   CycleSettings? get cycleSettings => _cycleSettings;
@@ -27,7 +28,6 @@ class UserProfileService extends ChangeNotifier {
   bool get trackCycle => _cycleSettings != null;
   bool get isPremium => _subscriptionType == SubscriptionType.premium;
 
-  /// Загружает данные из SharedPreferences в память. Вызывать один раз при запуске.
   Future<void> init() async {
     final profile = await load();
     if (profile != null) {
@@ -50,7 +50,7 @@ class UserProfileService extends ChangeNotifier {
     }
 
     final gender = Gender.values.firstWhere(
-      (g) => g.name == genderStr,
+          (g) => g.name == genderStr,
       orElse: () => Gender.preferNotToSay,
     );
 
@@ -75,8 +75,8 @@ class UserProfileService extends ChangeNotifier {
 
   SubscriptionType _parseSubscriptionType(String? value) {
     return SubscriptionType.values.firstWhere(
-      (type) => type.name == value,
-      orElse: () => SubscriptionType.free,
+          (type) => type.name == value,
+      orElse: () => SubscriptionType.premium,
     );
   }
 
@@ -138,10 +138,10 @@ class UserProfileService extends ChangeNotifier {
   }
 
   Future<void> saveNotificationSettings(
-    bool enabled,
-    int hour,
-    int minute,
-  ) async {
+      bool enabled,
+      int hour,
+      int minute,
+      ) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_notifEnabledKey, enabled);
     await prefs.setInt(_notifHourKey, hour);
@@ -152,7 +152,7 @@ class UserProfileService extends ChangeNotifier {
     _gender = null;
     _cycleSettings = null;
     _username = null;
-    _subscriptionType = SubscriptionType.free;
+    _subscriptionType = SubscriptionType.premium;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_genderKey);
@@ -166,15 +166,19 @@ class UserProfileService extends ChangeNotifier {
     await prefs.remove(_subscriptionTypeKey);
   }
 
-  // user_profile_service.dart
   Future<void> syncFromSupabase(String userId) async {
-    final response = await Supabase.instance.client
-        .from('profiles')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
+    try {
+      final response = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('user_id', userId)
+          .maybeSingle();
 
-    if (response != null) {
+      if (response == null) {
+        await saveSubscriptionType(SubscriptionType.premium);
+        return;
+      }
+
       final genderStr = response['gender'] as String?;
       final username = response['username'] as String?;
       final subscriptionStr = response['subscription_type'] as String?;
@@ -189,13 +193,9 @@ class UserProfileService extends ChangeNotifier {
       if (username != null) {
         await saveUsername(username);
       }
-      if (subscriptionStr != null) {
-        final subType = SubscriptionType.values.firstWhere(
-              (t) => t.name == subscriptionStr,
-          orElse: () => SubscriptionType.free,
-        );
-        await saveSubscriptionType(subType);
-      }
+      await saveSubscriptionType(_parseSubscriptionType(subscriptionStr));
+    } catch (_) {
+      await saveSubscriptionType(SubscriptionType.premium);
     }
   }
 }
