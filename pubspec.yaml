@@ -171,7 +171,7 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: false
-  image_path: "lib/ui/assets/mindall_offline_app_icon.png"
+  image_path: "lib/ui/assets/saferoom_app_icon.png"
   min_sdk_android: 21
 
 provider: ^6.1.2
