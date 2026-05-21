@@ -1,4 +1,4 @@
-import 'package:mindall/ui/app_route.dart';
+import 'package:mindall_offline/ui/app_route.dart';
 import 'dart:async';
 import 'dart:convert';
 

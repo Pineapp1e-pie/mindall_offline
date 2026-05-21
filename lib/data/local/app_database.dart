@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
-import 'package:mindall/data/local/static/moods.dart';
-import 'package:mindall/data/local/tables/daily_mood_stats.dart';
-import 'package:mindall/data/local/tables/user_achievements.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:mindall_offline/data/local/static/moods.dart';
+import 'package:mindall_offline/data/local/tables/daily_mood_stats.dart';
+import 'package:mindall_offline/data/local/tables/user_achievements.dart';
 
 import '../../domain/models/health_draft.dart';
 import 'tables/mood_entries.dart';

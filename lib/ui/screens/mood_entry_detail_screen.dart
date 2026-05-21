@@ -1,10 +1,10 @@
-import 'package:mindall/ui/app_route.dart';
+import 'package:mindall_offline/ui/app_route.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/public/flutter_sound_player.dart';
-import 'package:mindall/data/local/static/weather_labels.dart';
+import 'package:mindall_offline/data/local/static/weather_labels.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/local/app_database.dart';

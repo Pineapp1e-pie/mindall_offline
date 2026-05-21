@@ -1,4 +1,4 @@
-import 'package:mindall/ui/app_route.dart';
+import 'package:mindall_offline/ui/app_route.dart';
 // import 'package:flutter/cupertino.dart';
 // import 'package:flutter/material.dart';
 //

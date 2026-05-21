@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:excel/excel.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:mindall/data/local/static/weather_labels.dart';
+import 'package:mindall_offline/data/local/static/weather_labels.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -170,7 +170,7 @@ class ExportService {
     final dir = await getApplicationDocumentsDirectory();
     final fromStr = DateFormat('yyyy-MM-dd').format(from);
     final toStr = DateFormat('yyyy-MM-dd').format(to);
-    final path = '${dir.path}/миндаль_${fromStr}_$toStr.xlsx';
+    final path = '${dir.path}/SafeRoom_${fromStr}_$toStr.xlsx';
 
     final bytes = excel.encode();
     if (bytes == null) throw Exception('Ошибка при создании Excel-файла');
@@ -1293,7 +1293,7 @@ class ExportService {
         margin: const pw.EdgeInsets.all(40),
         theme: pw.ThemeData.withFont(base: ttf),
         build: (ctx) => [
-          pw.Text('Миндаль — твой дневник настроения', style: h1),
+          pw.Text('SafeRoom — твой дневник настроения', style: h1),
           pw.SizedBox(height: 4),
           pw.Text(dayTitle, style: grey),
           pw.Divider(height: 28, color: PdfColors.grey300),

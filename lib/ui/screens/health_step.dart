@@ -1,4 +1,4 @@
-import 'package:mindall/ui/app_route.dart';
+import 'package:mindall_offline/ui/app_route.dart';
 // health_step.dart (с Provider)
 
 import 'dart:async';
@@ -20,6 +20,7 @@ import '../../domain/services/subscription_service.dart';
 import '../../domain/services/user_profile_service.dart';
 import '../../domain/services/cycle_calculator.dart';
 import '../../domain/services/daily_mood_analyzer.dart';
+import '../app_route.dart';
 import '../widgets/achievement_popup.dart';
 import '../widgets/paywall_widget.dart';
 import '../widgets/step_indicator.dart';

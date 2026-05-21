@@ -1,12 +1,9 @@
 import 'dart:math';
 
-import 'package:mindall/ui/app_route.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/local/repositories/local_repository.dart';
 import '../../domain/models/achievement.dart';
@@ -14,8 +11,9 @@ import '../../domain/models/user_profile.dart';
 import '../../domain/services/notification_service.dart';
 import '../../domain/services/subscription_service.dart';
 import '../../domain/services/user_profile_service.dart';
+import '../app_route.dart';
 import '../widgets/achievement_popup.dart';
-import 'auth_screen.dart';
+import 'onboarding_screen.dart';
 import 'cycle_setup_screen.dart';
 
 const _accentGreen = Color(0xFF83F483);
@@ -31,10 +29,8 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   late UserProfileService _profileService;
-  final _client = Supabase.instance.client;
 
   String _username = '';
-  String _email = '';
   Gender? _gender;
   CycleSettings? _cycleSettings;
   bool _trackCycle = false;
@@ -54,12 +50,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _load() async {
-    final user = _client.auth.currentUser;
-    if (user == null) return;
-
-    _email = user.email ?? '';
-
-    // Читаем из памяти — данные уже загружены при старте приложения
     _username = _profileService.username ?? '';
     _gender = _profileService.gender;
     _cycleSettings = _profileService.cycleSettings;
@@ -69,12 +59,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _notifHour = await _profileService.loadNotificationHour();
     _notifMinute = await _profileService.loadNotificationMinute();
 
-    await _loadAchievements(user.id);
+    await _loadAchievements('local_user');
 
     if (mounted) setState(() => _loading = false);
 
-    // Фоном синхронизируем с Supabase
-    _syncFromRemote(user);
+
   }
 
   Future<void> _loadAchievements(String userId) async {
@@ -96,60 +85,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
-  Future<void> _syncFromRemote(User user) async {
-    final subscriptionService = context.read<SubscriptionService>();
-    final profile = await _client
-        .from('profiles')
-        .select()
-        .eq('user_id', user.id)
-        .maybeSingle();
 
-    String? newUsername;
-    Gender? newGender;
-
-    if (profile != null) {
-      newUsername = profile['username'] as String? ?? '';
-      final genderStr = profile['gender'] as String?;
-      if (genderStr != null) {
-        newGender = Gender.values.firstWhere(
-          (g) => g.name == genderStr,
-          orElse: () => Gender.preferNotToSay,
-        );
-      }
-    } else {
-      // Профиля нет — читаем из userMetadata и создаём запись
-      final meta = user.userMetadata;
-      if (meta != null) {
-        newUsername = meta['username'] as String? ?? '';
-        final genderStr = meta['gender'] as String?;
-        if (genderStr != null) {
-          newGender = Gender.values.firstWhere(
-            (g) => g.name == genderStr,
-            orElse: () => Gender.preferNotToSay,
-          );
-        }
-        await _client.from('profiles').upsert({
-          'user_id': user.id,
-          'username': newUsername,
-          'gender': newGender?.name,
-          'subscription_type': subscriptionService.type.name,
-        });
-      }
-    }
-
-    // Сохраняем в кеш
-    if (newUsername != null) await _profileService.saveUsername(newUsername);
-    if (newGender != null) await _profileService.saveGender(newGender);
-    await subscriptionService.syncFromRemote(user);
-
-    // Обновляем UI если данные изменились
-    if (mounted) {
-      setState(() {
-        if (newUsername != null) _username = newUsername;
-        if (newGender != null) _gender = newGender;
-      });
-    }
-  }
 
   // ──────────────────────────────────────
   // Диалог редактирования имени
@@ -163,10 +99,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     if (result == null || result.trim().isEmpty) return;
 
-    await _client.from('profiles').upsert({
-      'user_id': _client.auth.currentUser!.id,
-      'username': result.trim(),
-    });
+    await _profileService.saveUsername(result.trim());
     setState(() => _username = result.trim());
   }
 
@@ -183,75 +116,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     setState(() => _gender = result);
     await _profileService.saveGender(result);
-    await _client.from('profiles').upsert({
-      'user_id': _client.auth.currentUser!.id,
-      'gender': result.name,
-    });
   }
 
-  // ──────────────────────────────────────
-  // Диалог смены пароля
-  // ──────────────────────────────────────
-
-  Future<void> _changePassword() async {
-    final result = await showDialog<_PasswordResult>(
-      context: context,
-      builder: (_) => const _ChangePasswordDialog(),
-    );
-    if (result == null) return;
-
-    try {
-      // Проверяем старый пароль через повторный вход
-      await _client.auth.signInWithPassword(
-        email: _email,
-        password: result.oldPassword,
-      );
-      // Меняем пароль
-      await _client.auth.updateUser(
-        UserAttributes(password: result.newPassword),
-      );
-      TextInput.finishAutofillContext(shouldSave: true);
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Пароль обновлён')));
-      }
-    } on AuthException {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Неверный текущий пароль')),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Проверьте подключение к интернету или VPN'),
-          ),
-        );
-      }
-    }
-  }
-
-  // ──────────────────────────────────────
-  // Удаление аккаунта
-  // ──────────────────────────────────────
-
-  Future<void> _deleteAccount() async {
-    final confirm1 = await showDialog<bool>(
+  Future<void> _resetApp() async {
+    final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF18221C),
         title: const Text(
-          'Удалить аккаунт?',
-          style: TextStyle(fontFamily: 'DotGothic', color: Colors.white),
+          'Сбросить приложение?',
+          style: TextStyle(
+            color: Colors.white,
+            fontFamily: 'DotGothic',
+          ),
         ),
         content: const Text(
-          'Все данные будут удалены. Это действие нельзя отменить.',
+          'Все локальные данные будут удалены.',
           style: TextStyle(
+            color: Colors.white70,
             fontFamily: 'DotGothic',
-            color: Colors.white54,
-            fontSize: 13,
           ),
         ),
         actions: [
@@ -272,79 +155,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
-    if (confirm1 != true) return;
 
-    final confirm2 = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF18221C),
-        title: const Text(
-          'Точно удалить?',
-          style: TextStyle(fontFamily: 'DotGothic', color: Color(0xFFFF6B6B)),
-        ),
-        content: const Text(
-          'Восстановить аккаунт будет невозможно.',
-          style: TextStyle(
-            fontFamily: 'DotGothic',
-            color: Colors.white54,
-            fontSize: 13,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text(
-              'Отмена',
-              style: TextStyle(color: Colors.white38),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Да, удалить',
-              style: TextStyle(color: Color(0xFFFF6B6B)),
-            ),
-          ),
-        ],
+    if (confirm != true) return;
+
+    await _profileService.clearAll();
+
+    if (!mounted) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => const OnboardingScreen(),
       ),
+          (_) => false,
     );
-    if (confirm2 != true) return;
-
-    try {
-      await _client.functions.invoke('delete-account');
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
-      }
-      return;
-    }
-
-    await context.read<LocalRepository>().clearUserData();
-    await _profileService.clearAll();
-    await context.read<SubscriptionService>().clearLocalState();
-    if (mounted) {
-      Navigator.of(
-        context,
-      ).pushAndRemoveUntil(AppRoute(page: const AuthScreen()), (_) => false);
-    }
-  }
-
-  // ──────────────────────────────────────
-  // Выход
-  // ──────────────────────────────────────
-
-  Future<void> _signOut() async {
-    await context.read<LocalRepository>().clearUserData();
-    await _profileService.clearAll();
-    await context.read<SubscriptionService>().clearLocalState();
-    await _client.auth.signOut();
-    if (mounted) {
-      Navigator.of(
-        context,
-      ).pushAndRemoveUntil(AppRoute(page: const AuthScreen()), (_) => false);
-    }
   }
 
   // ──────────────────────────────────────
@@ -368,40 +191,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // Уведомления
   // ──────────────────────────────────────
 
-  Future<void> _toggleNotifications(bool value) async {
-    if (value) {
-      final granted = await NotificationService().requestPermission();
-      if (!granted) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Разреши уведомления в настройках телефона',
-                style: TextStyle(fontFamily: 'DotGothic'),
-              ),
-            ),
-          );
-        }
-        return;
-      }
-    }
-    setState(() => _notifEnabled = value);
-    await _profileService.saveNotificationSettings(
-      value,
-      _notifHour,
-      _notifMinute,
-    );
-    await NotificationService().saveNotificationSettings(
-      enabled: value,
-      hour: _notifHour,
-      minute: _notifMinute,
-    );
-  }
+  // Future<void> _toggleNotifications(bool value) async {
+  //   if (value) {
+  //     //final granted = await NotificationService().requestPermission();
+  //     if (!granted) {
+  //       if (mounted) {
+  //         ScaffoldMessenger.of(context).showSnackBar(
+  //           const SnackBar(
+  //             content: Text(
+  //               'Разреши уведомления в настройках телефона',
+  //               style: TextStyle(fontFamily: 'DotGothic'),
+  //             ),
+  //           ),
+  //         );
+  //       }
+  //       return;
+  //     }
+  //   }
+  //   setState(() => _notifEnabled = value);
+  //   await _profileService.saveNotificationSettings(
+  //     value,
+  //     _notifHour,
+  //     _notifMinute,
+  //   );
+  //   // await NotificationService().saveNotificationSettings(
+  //   //   enabled: value,
+  //   //   hour: _notifHour,
+  //   //   minute: _notifMinute,
+  //   // );
+  // }
 
-  Future<bool> _hasInternet() async {
-    final result = await Connectivity().checkConnectivity();
-    return result.any((r) => r != ConnectivityResult.none);
-  }
 
   Future<void> _pickNotificationTime() async {
     final picked = await showTimePicker(
@@ -430,27 +249,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _notifHour,
       _notifMinute,
     );
+    //
+    // final online = await _hasInternet();
+    // if (!online) {
+    //   if (mounted) {
+    //     ScaffoldMessenger.of(context).showSnackBar(
+    //       const SnackBar(
+    //         content: Text(
+    //           'Уведомления работают только при наличии интернета',
+    //           style: TextStyle(fontFamily: 'DotGothic'),
+    //         ),
+    //       ),
+    //     );
+    //   }
+    //   return;
+    // }
 
-    final online = await _hasInternet();
-    if (!online) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Уведомления работают только при наличии интернета',
-              style: TextStyle(fontFamily: 'DotGothic'),
-            ),
-          ),
-        );
-      }
-      return;
-    }
-
-    await NotificationService().saveNotificationSettings(
-      enabled: _notifEnabled,
-      hour: _notifHour,
-      minute: _notifMinute,
-    );
+    // await NotificationService().saveNotificationSettings(
+    //   enabled: _notifEnabled,
+    //   hour: _notifHour,
+    //   minute: _notifMinute,
+    // );
   }
 
   String _genderLabel(Gender? gender) {
@@ -554,15 +373,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       color: _accentYellow,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _email,
-                    style: const TextStyle(
-                      fontFamily: 'DotGothic',
-                      fontSize: 13,
-                      color: Colors.white38,
-                    ),
-                  ),
+
                 ],
               ),
             ),
@@ -591,12 +402,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               value: _genderLabel(_gender),
               onTap: _editGender,
             ),
-            _SettingRow(label: 'почта', value: _email),
-            _SettingRow(
-              label: 'пароль',
-              value: '••••••',
-              onTap: _changePassword,
-            ),
 
             const SizedBox(height: 24),
 
@@ -609,13 +414,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _SettingRow(label: 'сменить тариф', onTap: _showSubscriptionDialog),
             _SettingRow(
               label: 'уведомления',
-              trailing: Switch(
-                value: _notifEnabled,
-                onChanged: _toggleNotifications,
-                activeColor: Colors.white,
-                inactiveThumbColor: Colors.white24,
-                inactiveTrackColor: Colors.white12,
-              ),
+              // trailing: Switch(
+              //   value: _notifEnabled,
+              //   // onChanged: _toggleNotifications,
+              //   activeColor: Colors.white,
+              //   inactiveThumbColor: Colors.white24,
+              //   inactiveTrackColor: Colors.white12,
+              // ),
             ),
             if (_notifEnabled)
               _SettingRow(
@@ -648,12 +453,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             // ── Аккаунт ────────────────────────────
             _SectionLabel('аккаунт', color: Color(0xFFFF6B6B)),
             _SettingRow(
-              label: 'удалить аккаунт',
+              label: 'удалить все данные',
               labelColor: const Color(0xFFFF6B6B),
-              onTap: _deleteAccount,
+              onTap: _resetApp,
             ),
-            _SettingRow(label: 'выйти', onTap: _signOut),
-
             const SizedBox(height: 48),
           ],
         ),
@@ -661,6 +464,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 }
+
+
 
 // ──────────────────────────────────────
 // Виджеты
@@ -1227,3 +1032,5 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
     );
   }
 }
+
+

@@ -1,6 +1,6 @@
 {
-    "name": "mindall",
-    "short_name": "mindall",
+    "name": "mindall_offline",
+    "short_name": "mindall_offline",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

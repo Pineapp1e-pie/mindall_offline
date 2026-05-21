@@ -1,4 +1,4 @@
-import 'package:mindall/ui/app_route.dart';
+import 'package:mindall_offline/ui/app_route.dart';
 // mood_note_screen.dart
 
 import 'dart:async';
@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_sound/public/flutter_sound_recorder.dart'; // 👈 для записи
 import 'package:flutter_svg/svg.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:mindall/ui/screens/weather_step.dart';
+import 'package:mindall_offline/ui/screens/weather_step.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';

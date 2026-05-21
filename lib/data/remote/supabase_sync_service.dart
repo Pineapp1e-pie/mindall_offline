@@ -300,10 +300,7 @@ class SupabaseSyncService extends ChangeNotifier {
     final message = error.toString().toLowerCase();
     final reason = switch (error) {
       SocketException() => 'ошибка подключения к серверу',
-      TimeoutException() => 'сервер не отвечает вовремя',
-      _ when message.contains('failed host lookup') => 'ошибка подключения к серверу',
-      _ when message.contains('socketexception') => 'ошибка подключения к серверу',
-      _ when message.contains('timed out') => 'сервер не отвечает вовремя',
+      TimeoutException() => 'сервер временно не отвечает',
       _ => 'временная ошибка синхронизации',
     };
 

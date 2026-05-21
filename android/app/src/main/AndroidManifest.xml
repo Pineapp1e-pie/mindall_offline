@@ -18,7 +18,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 
     <application
-        android:label="Миндаль"
+        android:label="SafeRoom"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
@@ -57,14 +57,14 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="mindall" android:host="reset-password" />
+                <data android:scheme="mindall_offline" android:host="reset-password" />
             </intent-filter>
 
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="mindall" android:host="email-confirm" />
+                <data android:scheme="mindall_offline" android:host="email-confirm" />
             </intent-filter>
 
 

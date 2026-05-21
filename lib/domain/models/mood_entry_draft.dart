@@ -1,4 +1,4 @@
-import 'package:mindall/domain/models/weather_draft.dart';
+import 'package:mindall_offline/domain/models/weather_draft.dart';
 import 'health_draft.dart';
 
 

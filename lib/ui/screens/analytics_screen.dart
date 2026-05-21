@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:mindall/ui/app_route.dart';
+import 'package:mindall_offline/ui/app_route.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
@@ -696,7 +696,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay);
       await Printing.sharePdf(
         bytes: Uint8List.fromList(bytes),
-        filename: 'mindall_${_period.name}_$dateStr.pdf',
+        filename: 'mindall_offline_${_period.name}_$dateStr.pdf',
       );
     } catch (e) {
       if (mounted) {
@@ -726,7 +726,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay);
       await Printing.sharePdf(
         bytes: Uint8List.fromList(bytes),
-        filename: 'mindall_day_$dateStr.pdf',
+        filename: 'mindall_offline_day_$dateStr.pdf',
       );
     } catch (e) {
       if (mounted) {

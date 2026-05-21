@@ -1,6 +1,6 @@
 import 'dart:math';
 
-import 'package:mindall/ui/app_route.dart';
+import 'package:mindall_offline/ui/app_route.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,7 +15,7 @@ import '../../domain/services/notification_service.dart';
 import '../../domain/services/subscription_service.dart';
 import '../../domain/services/user_profile_service.dart';
 import '../widgets/achievement_popup.dart';
-import 'auth_screen.dart';
+import 'onboarding_screen.dart';
 import 'cycle_setup_screen.dart';
 
 class PrivacyPolicyScreen extends StatelessWidget {

@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:drift/drift.dart';
-import 'package:mindall/data/local/tables/health_data.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:mindall_offline/data/local/tables/health_data.dart';
+
 
 import '../../../domain/models/achievement.dart';
 import '../../../domain/models/mood_entry_with_mood.dart';
@@ -22,8 +22,7 @@ class LocalRepositoryImpl implements LocalRepository {
   @override
   Future<void> clearUserData() => db.clearUserData();
 
-  String get _userId =>
-      Supabase.instance.client.auth.currentUser?.id ?? '';
+  static const String _userId = 'local_user';
 
   DateTime _normalizeDay(DateTime value) =>
       DateTime(value.year, value.month, value.day);

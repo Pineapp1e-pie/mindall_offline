@@ -1,4 +1,4 @@
-import 'package:mindall/ui/app_route.dart';
+import 'package:mindall_offline/ui/app_route.dart';
 import 'package:flutter/material.dart';
 import '../../data/local/static/moods.dart';
 import '../assets/category_colors.dart';

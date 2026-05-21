@@ -1,7 +1,6 @@
 // user_profile_service.dart
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_profile.dart';
 
 class UserProfileService extends ChangeNotifier {
@@ -20,6 +19,11 @@ class UserProfileService extends ChangeNotifier {
   String? _username;
   SubscriptionType _subscriptionType = SubscriptionType.premium;
 
+  static const _firstLaunchKey = 'first_launch';
+
+  bool _isFirstLaunch = true;
+  bool get isFirstLaunch => _isFirstLaunch;
+
   Gender? get gender => _gender;
   CycleSettings? get cycleSettings => _cycleSettings;
   String? get username => _username;
@@ -28,8 +32,21 @@ class UserProfileService extends ChangeNotifier {
   bool get trackCycle => _cycleSettings != null;
   bool get isPremium => _subscriptionType == SubscriptionType.premium;
 
+  Future<void> completeOnboarding() async {
+    _isFirstLaunch = false;
+
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setBool(_firstLaunchKey, false);
+
+    notifyListeners();
+  }
+
   Future<void> init() async {
     final profile = await load();
+    final prefs = await SharedPreferences.getInstance();
+    _isFirstLaunch = prefs.getBool(_firstLaunchKey) ?? true;
+
     if (profile != null) {
       _gender = profile.gender;
       _cycleSettings = profile.cycleSettings;
@@ -164,38 +181,6 @@ class UserProfileService extends ChangeNotifier {
     await prefs.remove(_notifHourKey);
     await prefs.remove(_notifMinuteKey);
     await prefs.remove(_subscriptionTypeKey);
-  }
-
-  Future<void> syncFromSupabase(String userId) async {
-    try {
-      final response = await Supabase.instance.client
-          .from('profiles')
-          .select()
-          .eq('user_id', userId)
-          .maybeSingle();
-
-      if (response == null) {
-        await saveSubscriptionType(SubscriptionType.premium);
-        return;
-      }
-
-      final genderStr = response['gender'] as String?;
-      final username = response['username'] as String?;
-      final subscriptionStr = response['subscription_type'] as String?;
-
-      if (genderStr != null) {
-        final gender = Gender.values.firstWhere(
-              (g) => g.name == genderStr,
-          orElse: () => Gender.preferNotToSay,
-        );
-        await saveGender(gender);
-      }
-      if (username != null) {
-        await saveUsername(username);
-      }
-      await saveSubscriptionType(_parseSubscriptionType(subscriptionStr));
-    } catch (_) {
-      await saveSubscriptionType(SubscriptionType.premium);
-    }
+    await prefs.remove(_firstLaunchKey);
   }
 }

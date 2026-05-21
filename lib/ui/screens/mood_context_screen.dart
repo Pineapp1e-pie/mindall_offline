@@ -1,4 +1,4 @@
-import 'package:mindall/ui/app_route.dart';
+import 'package:mindall_offline/ui/app_route.dart';
 import 'package:drift/drift.dart' show Value, BooleanExpressionOperators;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

@@ -3,11 +3,10 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
-    id("com.google.gms.google-services")
 }
 
 android {
-    namespace = "com.example.mindall"
+    namespace = "com.example.saferoom"
     compileSdk = 36  // или flutter.compileSdkVersion если хотите оставить как было
     ndkVersion = flutter.ndkVersion
 
@@ -24,7 +23,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.mindall"
+        applicationId = "com.example.saferoom"
         minSdk = 26
         targetSdk = 36 // Пробуем 35
         versionCode = 25  // УВЕЛИЧЬТЕ СИЛЬНО! (было 20)
@@ -51,9 +50,6 @@ flutter {
 
 dependencies {
 
-    implementation(platform("com.google.firebase:firebase-bom:34.12.0"))
-
-    implementation("com.google.firebase:firebase-analytics")
 
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
