@@ -1,9 +1,13 @@
+import 'package:provider/provider.dart';
+
 import '../../domain/models/user_profile.dart';
 import 'package:flutter/material.dart';
 import 'package:mindall_offline/ui/app_route.dart';
 import 'package:mindall_offline/ui/screens/policy_screen.dart';
 import 'package:mindall_offline/ui/screens/main_nav_scaffold.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../domain/services/user_profile_service.dart';
 
 const _accentGreen = Color(0xFF83F483);
 const _accentYellow = Color(0xFFFFEB89);
@@ -50,10 +54,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         setState(() => _error = 'Выберите пол');
         return;
       }
-      // Сохраняем данные локально
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('user_name', _nameController.text.trim());
-      await prefs.setString('user_gender', _gender!.name);
+      final profileService = context.read<UserProfileService>();
+
+      await profileService.saveUsername(
+        _nameController.text.trim(),
+      );
+
+      await profileService.saveGender(
+        _gender!,
+      );
+
+      await profileService.completeOnboarding();
       // Переход на главный экран
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
